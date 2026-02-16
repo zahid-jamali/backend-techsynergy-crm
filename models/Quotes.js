@@ -132,7 +132,6 @@ const QuoteSchema = new Schema(
 			default: [],
 		},
 
-		/* -------- GST (QUOTE LEVEL ONLY) -------- */
 		isGstApplied: {
 			type: Boolean,
 			default: false,
@@ -140,15 +139,34 @@ const QuoteSchema = new Schema(
 
 		gstRate: {
 			type: Number,
-			default: 18, // fixed, controller uses this
+			default: 18,
 		},
 
 		gstAmount: {
 			type: Number,
-			default: 0, // controller calculate karega
+			default: 0,
 		},
 
-		/* -------- Totals (controller calculated) -------- */
+		otherTax: [
+			{
+				tax: {
+					type: String,
+					required: true,
+					trim: true,
+				},
+				percent: {
+					type: Number,
+					min: 0,
+					default: 0,
+				},
+			},
+		],
+
+		otherTaxAmount: {
+			type: Number,
+			default: 0,
+		},
+
 		subTotal: {
 			type: Number,
 			default: 0,

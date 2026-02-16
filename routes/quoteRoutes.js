@@ -2,7 +2,7 @@ const express = require('express');
 
 const quoteControllers = require('../controllers/quoteControllers.js');
 const { verifyJWT, requireAdmin } = require('../lib/middleware.js');
-const uploadPO = require('../lib/poUpload');
+const uploadPO = require('../lib/poUpload.js');
 const router = express.Router();
 
 router.post('/create', verifyJWT, quoteControllers.createQuote);

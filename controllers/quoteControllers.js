@@ -56,22 +56,19 @@ const createQuote = async (req, res) => {
 			deal,
 			contact,
 			validUntil,
-			billingAddress,
-			shippingAddress,
 			products,
 			currency,
 			description,
 			isGstApplied,
+			gstRate = 18,
 			termsAndConditions,
+			otherTax = [], // NEW
 		} = req.body;
 
-		console.log(req.body);
-
-		/* ---------------- Basic Validation ---------------- */
 		if (!subject || !deal) {
 			return res.status(400).json({
 				success: false,
-				msg: 'Subject, deal and account are required',
+				msg: 'Subject and deal are required',
 			});
 		}
 
@@ -82,9 +79,9 @@ const createQuote = async (req, res) => {
 			});
 		}
 
-		/* ---------------- Calculations ---------------- */
-		const GST_RATE = 0.18;
 		const round = (n) => Math.round(n * 100) / 100;
+
+		/* ---------------- PRODUCT CALCULATIONS ---------------- */
 
 		let subTotal = 0;
 		let discountTotal = 0;
@@ -103,6 +100,7 @@ const createQuote = async (req, res) => {
 			return {
 				serialNo: index + 1,
 				productName: p.productName,
+				description: p.description || '',
 				quantity,
 				listPrice,
 				discount,
@@ -111,22 +109,61 @@ const createQuote = async (req, res) => {
 			};
 		});
 
-		let dealTmp = await Deals.findById(deal);
-
-		const account = dealTmp.account;
-
 		subTotal = round(subTotal);
 		discountTotal = round(discountTotal);
 
+		const taxableAmount = subTotal - discountTotal;
+
+		/* ---------------- GST CALCULATION ---------------- */
+
 		let gstAmount = 0;
+
 		if (isGstApplied === true) {
-			gstAmount = round((subTotal - discountTotal) * GST_RATE);
+			gstAmount = round((taxableAmount * Number(gstRate)) / 100);
 		}
 
-		const grandTotal = round(subTotal - discountTotal + gstAmount);
+		/* ---------------- OTHER TAX CALCULATION ---------------- */
+
+		let otherTaxAmount = 0;
+
+		const calculatedOtherTaxes = Array.isArray(otherTax)
+			? otherTax.map((t) => {
+					const percent = Number(t.percent) || 0;
+					const taxValue = round((taxableAmount * percent) / 100);
+
+					otherTaxAmount += taxValue;
+
+					return {
+						tax: t.tax,
+						percent,
+					};
+				})
+			: [];
+
+		otherTaxAmount = round(otherTaxAmount);
+
+		/* ---------------- GRAND TOTAL ---------------- */
+
+		const grandTotal = round(taxableAmount + gstAmount + otherTaxAmount);
+
+		/* ---------------- GET ACCOUNT FROM DEAL ---------------- */
+
+		const dealTmp = await Deals.findById(deal);
+		if (!dealTmp) {
+			return res.status(404).json({
+				success: false,
+				msg: 'Deal not found',
+			});
+		}
+
+		const account = dealTmp.account;
+
+		/* ---------------- GENERATE QUOTE NUMBER ---------------- */
 
 		const seq = await getNextSequence('quotation');
 		const quoteNumber = `TS-QUO-${String(seq).padStart(5, '0')}`;
+
+		/* ---------------- CREATE QUOTE ---------------- */
 
 		const quote = await Quote.create({
 			quoteOwner: req.user.id,
@@ -135,19 +172,22 @@ const createQuote = async (req, res) => {
 			account,
 			contact,
 			validUntil,
-			billingAddress,
-			shippingAddress,
 			products: calculatedProducts,
 			termsAndConditions,
 			description,
 			quoteNumber,
 			currency,
 			isGstApplied: Boolean(isGstApplied),
+			gstRate,
 			gstAmount,
+			otherTax: calculatedOtherTaxes,
+			otherTaxAmount,
 			subTotal,
 			discountTotal,
 			grandTotal,
 		});
+
+		/* ---------------- UPDATE PRODUCT PRICE HISTORY ---------------- */
 
 		await Promise.all(
 			products.map(async (p) => {
@@ -230,6 +270,7 @@ const updateQuote = async (req, res) => {
 			products,
 			isGstApplied,
 			currency,
+			otherTax, // ✅ NEW
 		} = req.body;
 
 		if (subject !== undefined) quote.subject = subject.trim();
@@ -243,6 +284,8 @@ const updateQuote = async (req, res) => {
 
 		let subTotal = 0;
 		let discountTotal = 0;
+
+		/* ================= PRODUCTS ================= */
 
 		if (Array.isArray(products)) {
 			quote.products = products.map((p, index) => {
@@ -259,6 +302,7 @@ const updateQuote = async (req, res) => {
 				return {
 					serialNo: index + 1,
 					productName: p.productName,
+					description: p.description || '',
 					quantity,
 					listPrice,
 					discount,
@@ -266,26 +310,57 @@ const updateQuote = async (req, res) => {
 					total: round(total),
 				};
 			});
+		} else {
+			// If products not sent, keep previous values
+			subTotal = quote.subTotal || 0;
+			discountTotal = quote.discountTotal || 0;
 		}
 
 		subTotal = round(subTotal);
 		discountTotal = round(discountTotal);
 
-		const previouslyGstApplied = quote.isGstApplied === true;
+		const taxableAmount = subTotal - discountTotal;
+
+		/* ================= GST ================= */
+
 		const nowGstApplied = isGstApplied === true;
 
 		let gstAmount = 0;
-
 		if (nowGstApplied) {
-			gstAmount = round((subTotal - discountTotal) * GST_RATE);
+			gstAmount = round(taxableAmount * GST_RATE);
 		}
 
 		quote.isGstApplied = nowGstApplied;
 		quote.gstAmount = gstAmount;
 
+		/* ================= OTHER TAX ================= */
+
+		let otherTaxAmount = 0;
+
+		if (Array.isArray(otherTax)) {
+			const calculatedOtherTaxes = otherTax.map((t) => {
+				const percent = Number(t.percent) || 0;
+				const taxValue = round((taxableAmount * percent) / 100);
+
+				otherTaxAmount += taxValue;
+
+				return {
+					tax: t.tax,
+					percent,
+				};
+			});
+
+			quote.otherTax = calculatedOtherTaxes;
+		}
+
+		otherTaxAmount = round(otherTaxAmount);
+		quote.otherTaxAmount = otherTaxAmount;
+
+		/* ================= FINAL TOTAL ================= */
+
 		quote.subTotal = subTotal;
 		quote.discountTotal = discountTotal;
-		quote.grandTotal = round(subTotal - discountTotal + gstAmount);
+		quote.grandTotal = round(taxableAmount + gstAmount + otherTaxAmount);
 
 		await quote.save();
 
