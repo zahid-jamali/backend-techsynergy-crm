@@ -13,7 +13,7 @@ router.put(
 
 router.put('/update', verifyJWT, userControllers.updateUser);
 
-router.post('/create', userControllers.createUser);
+router.post('/create', verifyJWT, requireAdmin, userControllers.createUser);
 router.post('/login', userControllers.loginUser);
 
 module.exports = router;

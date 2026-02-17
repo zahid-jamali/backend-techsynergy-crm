@@ -193,14 +193,7 @@ const getQuoteHtml = (quote) => {
   <div class="top-info">
     <div>
       <p><strong>To:</strong></p>
-      <p>${capitalize(quote.contact?.firstName || '')} ${capitalize(
-        quote.contact?.lastName || ''
-      )}</p>
-      <p>${capitalize(quote.account?.billingAddress?.street || '')}</p>
-      <p>${capitalize(quote.account?.billingAddress?.city || '')}, ${capitalize(
-        quote.account?.billingAddress?.state || ''
-      )}</p>
-      <p>${capitalize(quote.account?.billingAddress?.country || '')}</p>
+      <p><b>${capitalize(quote.account.accountName || '')} </p></b>
     </div>
 
     <div class="text-right">
@@ -230,6 +223,7 @@ const getQuoteHtml = (quote) => {
     <thead>
       <tr>
         <th style="width:5%">S.No</th>
+        <th style="width:15%">Product</th>
         <th>Description</th>
         <th style="width:15%">Unit Price</th>
         <th style="width:10%">Quantity</th>
@@ -243,6 +237,7 @@ const getQuoteHtml = (quote) => {
         <tr>
           <td class="text-right">${i + 1}</td>
           <td>${capitalize(p.productName)}</td>
+          <td>${p.description}</td>
           <td class="text-right">${formatCurrency(p.listPrice)}</td>
           <td class="text-right">${p.quantity}</td>
           <td class="text-right">${formatCurrency(p.total)}</td>
@@ -259,16 +254,7 @@ const getQuoteHtml = (quote) => {
       <td class="label text-right">Subtotal:</td>
       <td class="text-right">${formatCurrency(quote.subTotal)}</td>
     </tr>
-    <tr>
-      <td class="label text-right">Discount:</td>
-      <td class="text-right">${formatCurrency(quote.discountTotal)}</td>
-    </tr>
-    <tr>
-      <td class="label text-right">Taxable Amount:</td>
-      <td class="text-right">${formatCurrency(
-        quote.subTotal - quote.discountTotal
-      )}</td>
-    </tr>
+
     ${
       quote.isGstApplied
         ? `
@@ -276,7 +262,11 @@ const getQuoteHtml = (quote) => {
       <td class="label text-right">GST (18%):</td>
       <td class="text-right">${formatCurrency(quote.gstAmount)}</td>
     </tr>`
-        : ''
+        : `
+    <tr>
+      <td class="label text-right">GST (18%):</td>
+      <td class="text-right">Excluded</td>
+    </tr>`
     }
     ${otherTaxRows}
     <tr class="grand">
@@ -301,16 +291,19 @@ const getQuoteHtml = (quote) => {
         .map((t) => `<li>${capitalize(t)}</li>`)
         .join('')}
     </ul>
+    <br />
+    <br />
+    <strong>Best Regards,</strong><br/>
+    ${capitalize(quote.quoteOwner?.name || '')}<br/>
+    ${quote.quoteOwner?.email || ''}<br/>
+    TechSynergy Innovations Pvt. Ltd.
   </div>
 
   <div class="footer-space"></div>
 
   <!-- FOOTER -->
   <div class="footer">
-    <strong>Best Regards,</strong><br/>
-    ${capitalize(quote.quoteOwner?.name || '')}<br/>
-    ${quote.quoteOwner?.email || ''}<br/>
-    TechSynergy Innovations Pvt. Ltd.
+
 
     <div class="company-footer">
       Plot 15C, Office #1, First Floor, Badar Commercial Street 10,
