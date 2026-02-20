@@ -306,8 +306,8 @@ const getQuoteHtml = (quote) => {
 
 
     <div class="company-footer">
-      Plot 15C, Office #1, First Floor, Badar Commercial Street 10,
-      Phase V Ext, DHA Karachi<br/>
+      47-C, Mezz Floor, DHA Phase II Ext, Karachi
+      <br/>
       www.techsynergypk.com | info@techsynergypk.com | 0337-8328310
     </div>
   </div>

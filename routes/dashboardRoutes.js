@@ -8,4 +8,6 @@ const router = express.Router();
 
 router.get('/staff', verifyJWT, dashboardControllers.getDashboardData);
 
+router.get('/admin', verifyJWT, dashboardControllers.getAdminDashboard);
+
 module.exports = router;

@@ -3,9 +3,279 @@ const Account = require('../models/Account');
 const Deal = require('../models/Deals');
 const Quote = require('../models/Quotes');
 const mongoose = require('mongoose');
-/* ===============================
-   GET YEAR RANGE
-================================= */
+const convertCurrency = require('../lib/convertCurrency.js');
+const User = require('../models/Users');
+const SalesTarget = require('../models/SalesTarget');
+
+const getAdminDashboard = async (req, res) => {
+	try {
+		const now = new Date();
+		const currentYear = now.getFullYear();
+
+		const sixMonthsAgo = new Date();
+		sixMonthsAgo.setMonth(now.getMonth() - 5);
+		sixMonthsAgo.setDate(1);
+
+		const USD_RATE = 280; // later move to config
+
+		/* ================= EXECUTIVE AGGREGATION ================= */
+
+		const dealsAgg = await Deal.aggregate([
+			{ $match: { isActive: true } },
+			{
+				$addFields: {
+					normalizedAmount: {
+						$cond: [
+							{ $eq: ['$currency', 'USD'] },
+							{ $multiply: ['$amount', USD_RATE] },
+							'$amount',
+						],
+					},
+				},
+			},
+			{
+				$group: {
+					_id: null,
+					totalRevenue: {
+						$sum: {
+							$cond: [
+								{ $eq: ['$stage', 'Closed Won'] },
+								'$normalizedAmount',
+								0,
+							],
+						},
+					},
+					pipelineValue: {
+						$sum: {
+							$cond: [
+								{
+									$not: {
+										$in: ['$stage', ['Closed Won', 'Closed Lost']],
+									},
+								},
+								'$normalizedAmount',
+								0,
+							],
+						},
+					},
+					expectedRevenue: { $sum: '$expectedRevenue' },
+					closedWonCount: {
+						$sum: { $cond: [{ $eq: ['$stage', 'Closed Won'] }, 1, 0] },
+					},
+					closedLostCount: {
+						$sum: { $cond: [{ $eq: ['$stage', 'Closed Lost'] }, 1, 0] },
+					},
+					totalDeals: { $sum: 1 },
+					avgDealSize: { $avg: '$normalizedAmount' },
+				},
+			},
+		]);
+
+		const stats = dealsAgg[0] || {};
+
+		const winRate =
+			stats.closedWonCount + stats.closedLostCount === 0
+				? 0
+				: (
+						(stats.closedWonCount /
+							(stats.closedWonCount + stats.closedLostCount)) *
+						100
+					).toFixed(2);
+
+		const totalUsers = await User.countDocuments({ isActive: true });
+		const totalQuotes = await Quote.countDocuments({ isActive: true });
+
+		/* ================= REVENUE TREND ================= */
+
+		const revenueTrendAgg = await Deal.aggregate([
+			{
+				$match: {
+					stage: 'Closed Won',
+					closingDate: { $gte: sixMonthsAgo },
+					isActive: true,
+				},
+			},
+			{
+				$addFields: {
+					normalizedAmount: {
+						$cond: [
+							{ $eq: ['$currency', 'USD'] },
+							{ $multiply: ['$amount', USD_RATE] },
+							'$amount',
+						],
+					},
+				},
+			},
+			{
+				$group: {
+					_id: {
+						month: { $month: '$closingDate' },
+						year: { $year: '$closingDate' },
+					},
+					revenue: { $sum: '$normalizedAmount' },
+				},
+			},
+			{ $sort: { '_id.year': 1, '_id.month': 1 } },
+		]);
+
+		const monthNames = [
+			'Jan',
+			'Feb',
+			'Mar',
+			'Apr',
+			'May',
+			'Jun',
+			'Jul',
+			'Aug',
+			'Sep',
+			'Oct',
+			'Nov',
+			'Dec',
+		];
+
+		const revenueTrend = revenueTrendAgg.map((item) => ({
+			month: monthNames[item._id.month - 1],
+			revenue: item.revenue,
+		}));
+
+		/* ================= DEAL STAGES ================= */
+
+		const dealStagesAgg = await Deal.aggregate([
+			{ $match: { isActive: true } },
+			{ $group: { _id: '$stage', count: { $sum: 1 } } },
+			{ $sort: { count: -1 } },
+		]);
+
+		const dealStages = dealStagesAgg.map((d) => ({
+			stage: d._id,
+			count: d.count,
+		}));
+
+		/* ================= REVENUE BY STAFF ================= */
+
+		const revenueByStaff = await Deal.aggregate([
+			{ $match: { stage: 'Closed Won', isActive: true } },
+			{
+				$addFields: {
+					normalizedAmount: {
+						$cond: [
+							{ $eq: ['$currency', 'USD'] },
+							{ $multiply: ['$amount', USD_RATE] },
+							'$amount',
+						],
+					},
+				},
+			},
+			{
+				$group: {
+					_id: '$dealOwner',
+					revenue: { $sum: '$normalizedAmount' },
+				},
+			},
+			{ $sort: { revenue: -1 } },
+			{ $limit: 5 },
+			{
+				$lookup: {
+					from: 'users',
+					localField: '_id',
+					foreignField: '_id',
+					as: 'user',
+				},
+			},
+			{ $unwind: '$user' },
+			{
+				$project: {
+					name: '$user.name',
+					revenue: 1,
+				},
+			},
+		]);
+
+		/* ================= QUOTE STATUS ================= */
+
+		const quoteStatusAgg = await Quote.aggregate([
+			{ $match: { isActive: true } },
+			{ $group: { _id: '$quoteStage', value: { $sum: 1 } } },
+			{ $sort: { value: -1 } },
+		]);
+
+		const quoteStatus = quoteStatusAgg.map((q) => ({
+			name: q._id,
+			value: q.value,
+		}));
+
+		/* ================= MONTHLY GROWTH ================= */
+
+		const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+		const startOfLastMonth = new Date(
+			now.getFullYear(),
+			now.getMonth() - 1,
+			1
+		);
+		const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+
+		const [thisMonthAgg, lastMonthAgg] = await Promise.all([
+			Deal.aggregate([
+				{
+					$match: {
+						stage: 'Closed Won',
+						closingDate: { $gte: startOfMonth },
+						isActive: true,
+					},
+				},
+				{ $group: { _id: null, total: { $sum: '$amount' } } },
+			]),
+			Deal.aggregate([
+				{
+					$match: {
+						stage: 'Closed Won',
+						closingDate: {
+							$gte: startOfLastMonth,
+							$lte: endOfLastMonth,
+						},
+						isActive: true,
+					},
+				},
+				{ $group: { _id: null, total: { $sum: '$amount' } } },
+			]),
+		]);
+
+		const thisMonthRevenue = thisMonthAgg[0]?.total || 0;
+		const lastMonthRevenue = lastMonthAgg[0]?.total || 0;
+
+		const growthRate =
+			lastMonthRevenue === 0
+				? 100
+				: (
+						((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) *
+						100
+					).toFixed(2);
+
+		/* ================= FINAL RESPONSE ================= */
+
+		res.json({
+			summaryStats: {
+				totalRevenue: stats.totalRevenue || 0,
+				pipelineValue: stats.pipelineValue || 0,
+				expectedRevenue: stats.expectedRevenue || 0,
+				avgDealSize: Math.round(stats.avgDealSize || 0),
+				winRate: Number(winRate),
+				totalUsers,
+				totalDeals: stats.totalDeals || 0,
+				totalQuotes,
+				growthRate: Number(growthRate),
+			},
+			revenueTrend,
+			dealStages,
+			revenueByStaff,
+			quoteStatus,
+		});
+	} catch (error) {
+		console.error(error);
+		res.status(500).json({ message: 'Dashboard Error' });
+	}
+};
+
 const getYearRange = () => {
 	const now = new Date();
 	const start = new Date(now.getFullYear(), 0, 1);
@@ -80,15 +350,32 @@ const getDashboardData = async (req, res) => {
 		   REVENUE CALCULATIONS
 		================================= */
 
+		const convertToPKR = async (amount, currency) => {
+			if (!amount) return 0;
+
+			switch (currency) {
+				case 'USD':
+					let tmp = await convertCurrency(amount, 'USD', 'PKR');
+					return tmp;
+				case 'PKR':
+				default:
+					return amount;
+			}
+		};
+
 		const deals = await Deal.find({ dealOwner: userId });
 
-		const totalDealValue = deals.reduce(
-			(sum, d) => sum + (d.amount || 0),
+		const dealValues = await Promise.all(
+			deals.map((d) => convertToPKR(d.amount, d.currency))
+		);
+
+		const totalDealValue = dealValues.reduce(
+			(sum, val) => sum + Number(val || 0),
 			0
 		);
 
-		const weightedExpectedRevenue = deals.reduce(
-			(sum, d) => sum + (d.expectedRevenue || 0),
+		const weightedExpectedRevenue = dealValues.reduce(
+			(sum, val) => sum + Number(val || 0),
 			0
 		);
 
@@ -98,8 +385,12 @@ const getDashboardData = async (req, res) => {
 			createdAt: { $gte: start, $lte: end },
 		});
 
-		const totalSell = approvedSales.reduce(
-			(sum, q) => sum + (q.grandTotal || 0),
+		const saleValues = await Promise.all(
+			approvedSales.map((q) => convertToPKR(q.grandTotal, q.currency))
+		);
+
+		const totalSell = saleValues.reduce(
+			(sum, val) => sum + Number(val || 0),
 			0
 		);
 
@@ -107,9 +398,7 @@ const getDashboardData = async (req, res) => {
 			closedWonDeals > 0 ? totalDealValue / closedWonDeals : 0;
 
 		const winRate =
-			totalDeals > 0
-				? ((closedWonDeals / totalDeals) * 100).toFixed(2)
-				: 0;
+			totalDeals > 0 ? ((closedWonDeals / totalDeals) * 100).toFixed(2) : 0;
 
 		const conversionRate =
 			totalQuotes > 0
@@ -242,7 +531,7 @@ const getDashboardData = async (req, res) => {
 		})
 			.sort({ amount: -1 })
 			.limit(5)
-			.select('dealName amount stage');
+			.select('dealName amount stage currency');
 
 		/* ===============================
 		   RECENT QUOTES
@@ -275,4 +564,4 @@ const getDashboardData = async (req, res) => {
 	}
 };
 
-module.exports = { getDashboardData };
+module.exports = { getDashboardData, getAdminDashboard };
