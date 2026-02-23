@@ -94,13 +94,11 @@ const DealSchema = new Schema(
 			index: true,
 		},
 
-		/* 🔹 Notes */
 		description: {
 			type: String,
 			trim: true,
 		},
 
-		/* 🔹 Future Proofing */
 		meta: {
 			type: Map,
 			of: Schema.Types.Mixed,
