@@ -228,7 +228,7 @@ const getMyQuotes = async (req, res) => {
 			quoteOwner: req.user.id,
 			isActive: true,
 		})
-			.populate('deal', 'dealName')
+			.populate('deal')
 			.populate('account', 'accountName')
 			.populate('contact', 'firstName lastName')
 			.sort({ createdAt: -1 });
@@ -381,7 +381,7 @@ const updateQuote = async (req, res) => {
 const updateQuoteStage = async (req, res) => {
 	try {
 		const { id } = req.params;
-		const { quoteStage } = req.body;
+		const { quoteStage, probability } = req.body;
 
 		const allowedStages = [
 			'Draft',
@@ -409,7 +409,6 @@ const updateQuoteStage = async (req, res) => {
 			});
 		}
 
-		// 🚨 PO RULES
 		if (quoteStage === 'Confirmed') {
 			if (!req.file) {
 				return res.status(400).json({
@@ -422,6 +421,7 @@ const updateQuoteStage = async (req, res) => {
 				public_id: req.file.filename,
 				url: req.file.path,
 			};
+
 			quote.confirmedDate = new Date();
 		} else {
 			if (req.file) {
@@ -430,6 +430,38 @@ const updateQuoteStage = async (req, res) => {
 					msg: 'Purchase Order can only be uploaded when confirming the quote',
 				});
 			}
+		}
+
+		if (quoteStage === 'Delivered') {
+			if (!probability) {
+				return res.status(400).json({
+					success: false,
+					msg: 'Delivered quote must have probability',
+				});
+			}
+
+			const deal = await Deal.findById(quote.deal);
+
+			if (!deal) {
+				return res.status(404).json({
+					success: false,
+					msg: 'Associated deal not found',
+				});
+			}
+
+			deal.probability = probability;
+			deal.amount = quote.subTotal;
+
+			await deal.save();
+
+			await Quote.updateMany(
+				{
+					deal: quote.deal,
+					_id: { $ne: quote._id },
+					quoteStage: 'Delivered',
+				},
+				{ $set: { quoteStage: 'On Hold' } }
+			);
 		}
 
 		quote.quoteStage = quoteStage;

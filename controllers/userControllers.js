@@ -19,7 +19,8 @@ const updateUser = async (req, res) => {
 		if (email !== undefined) user.email = email;
 		if (phone !== undefined) user.phone = phone;
 		if (password !== undefined) {
-			const hashedPassword = bcrypt.hash(password, 10);
+			const hashedPassword = await bcrypt.hash(password, 10);
+
 			user.password = hashedPassword;
 		}
 		await user.save();
