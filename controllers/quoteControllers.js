@@ -272,6 +272,7 @@ const updateQuote = async (req, res) => {
 			currency,
 			otherTax, // ✅ NEW
 		} = req.body;
+		console.log(req.body);
 
 		if (subject !== undefined) quote.subject = subject.trim();
 		if (quoteStage !== undefined) quote.quoteStage = quoteStage;
@@ -440,7 +441,7 @@ const updateQuoteStage = async (req, res) => {
 				});
 			}
 
-			const deal = await Deal.findById(quote.deal);
+			const deal = await Deals.findById(quote.deal);
 
 			if (!deal) {
 				return res.status(404).json({
@@ -451,6 +452,7 @@ const updateQuoteStage = async (req, res) => {
 
 			deal.probability = probability;
 			deal.amount = quote.subTotal;
+			deal.currency = quote.currency;
 
 			await deal.save();
 
