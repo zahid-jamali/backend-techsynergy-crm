@@ -10,6 +10,7 @@ const createContact = async (req, res) => {
 			email,
 			phone,
 			mobile,
+			designation,
 			postalAddress,
 			description,
 			meta,
@@ -48,6 +49,7 @@ const createContact = async (req, res) => {
 			firstName,
 			lastName,
 			account,
+			designation,
 			email,
 			phone,
 			mobile,
@@ -104,6 +106,7 @@ const updateContact = async (req, res) => {
 			account,
 			email,
 			phone,
+			designation,
 			mobile,
 			postalAddress,
 			description,
@@ -143,6 +146,7 @@ const updateContact = async (req, res) => {
 		if (mobile !== undefined) contact.mobile = mobile;
 		if (postalAddress !== undefined) contact.postalAddress = postalAddress;
 		if (description !== undefined) contact.description = description;
+		if (designation !== undefined) contact.designation = designation;
 
 		await contact.save();
 

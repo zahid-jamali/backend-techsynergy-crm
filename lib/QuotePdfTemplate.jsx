@@ -208,7 +208,7 @@ const getQuoteHtml = (quote) => {
     ${
       quote.quoteStage === 'Confirmed' || quote.quoteStage === 'Closed Won'
         ? 'Sales Order'
-        : 'Quotation'
+        : `Quotation For ${quote.subject}`
     }
   </div>
 

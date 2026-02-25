@@ -3,17 +3,6 @@ const mongoose = require('mongoose');
 
 const { Schema } = mongoose;
 
-const AddressSchema = new Schema(
-	{
-		street: { type: String, trim: true },
-		city: { type: String, trim: true },
-		state: { type: String, trim: true },
-		postalCode: { type: String, trim: true },
-		country: { type: String, trim: true },
-	},
-	{ _id: false }
-);
-
 const ContactSchema = new Schema(
 	{
 		contactOwner: {
@@ -57,9 +46,11 @@ const ContactSchema = new Schema(
 			trim: true,
 		},
 
-		postalAddress: AddressSchema,
-
 		description: {
+			type: String,
+			trim: true,
+		},
+		designation: {
 			type: String,
 			trim: true,
 		},

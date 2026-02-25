@@ -39,7 +39,7 @@ const generateQuotePdf = async (req, res) => {
 
 		res.set({
 			'Content-Type': 'application/pdf',
-			'Content-Disposition': `attachment; filename=Quote-${quote._id}.pdf`,
+			'Content-Disposition': `attachment; filename=Q-${quote.subject}-${quote.account.accountName}.pdf`,
 		});
 
 		res.send(pdf);
