@@ -6,6 +6,103 @@ const mongoose = require('mongoose');
 const convertCurrency = require('../lib/convertCurrency.js');
 const User = require('../models/Users');
 const SalesTarget = require('../models/SalesTarget');
+const axios = require('axios');
+
+const getSingleUserPerformance = async (req, res) => {
+	try {
+		const userId = req.params.id;
+
+		const user = await User.findById(userId).select('-password');
+		if (!user) {
+			return res.status(404).json({ message: 'User not found' });
+		}
+
+		const deals = await Deal.find({ dealOwner: userId });
+		const quotes = await Quote.find({ quoteOwner: userId });
+
+		/* ================= DEAL CALCULATIONS ================= */
+
+		const closedWonDeals = deals.filter((d) => d.stage === 'Closed Won');
+
+		const totalRevenue = closedWonDeals.reduce(
+			(sum, d) => sum + (d.amount || 0),
+			0
+		);
+
+		const activePipeline = deals
+			.filter((d) => !['Closed Won', 'Closed Lost'].includes(d.stage))
+			.reduce((sum, d) => sum + (d.amount || 0), 0);
+
+		const conversionRate =
+			deals.length > 0
+				? ((closedWonDeals.length / deals.length) * 100).toFixed(1)
+				: 0;
+
+		/* ================= SELL ORDERS ================= */
+
+		const confirmedQuotes = quotes.filter(
+			(q) => q.quoteStage === 'Confirmed'
+		);
+
+		/* ================= DEAL STAGE DISTRIBUTION ================= */
+
+		const dealStageMap = {};
+		deals.forEach((d) => {
+			dealStageMap[d.stage] = (dealStageMap[d.stage] || 0) + 1;
+		});
+
+		const dealStages = Object.entries(dealStageMap).map(([stage, count]) => ({
+			stage,
+			count,
+		}));
+
+		/* ================= QUOTE STATUS ================= */
+
+		const quoteStageMap = {};
+		quotes.forEach((q) => {
+			quoteStageMap[q.quoteStage] = (quoteStageMap[q.quoteStage] || 0) + 1;
+		});
+
+		const quoteStatuses = Object.entries(quoteStageMap).map(
+			([stage, count]) => ({ stage, count })
+		);
+
+		/* ================= MONTHLY REVENUE ================= */
+
+		const monthlyRevenueMap = {};
+
+		closedWonDeals.forEach((d) => {
+			const month = new Date(d.createdAt).toLocaleString('default', {
+				month: 'short',
+			});
+
+			monthlyRevenueMap[month] =
+				(monthlyRevenueMap[month] || 0) + (d.amount || 0);
+		});
+
+		const revenueTrend = Object.entries(monthlyRevenueMap).map(
+			([month, revenue]) => ({ month, revenue })
+		);
+
+		res.json({
+			user,
+			stats: {
+				totalDeals: deals.length,
+				totalQuotes: quotes.length,
+				totalSellOrders: confirmedQuotes.length,
+				totalRevenue,
+				activePipeline,
+				conversionRate,
+			},
+			dealStages,
+			quoteStatuses,
+			revenueTrend,
+		});
+	} catch (err) {
+		console.error(err);
+		res.status(500).json({ message: 'Failed to load user performance' });
+	}
+};
 
 const getAdminDashboard = async (req, res) => {
 	try {
@@ -16,7 +113,9 @@ const getAdminDashboard = async (req, res) => {
 		sixMonthsAgo.setMonth(now.getMonth() - 5);
 		sixMonthsAgo.setDate(1);
 
-		const USD_RATE = 280; // later move to config
+		const response = await axios.get(`https://open.er-api.com/v6/latest/USD`);
+
+		const USD_RATE = response.data.rates['PKR'];
 
 		/* ================= EXECUTIVE AGGREGATION ================= */
 
@@ -535,6 +634,7 @@ const getAdminDashboard = async (req, res) => {
 		/* ================= FINAL RESPONSE ================= */
 
 		res.json({
+			USD_RATE,
 			summaryStats: {
 				totalRevenue: stats.totalRevenue || 0,
 				pipelineValue: stats.pipelineValue || 0,
@@ -868,4 +968,8 @@ const getDashboardData = async (req, res) => {
 	}
 };
 
-module.exports = { getDashboardData, getAdminDashboard };
+module.exports = {
+	getDashboardData,
+	getAdminDashboard,
+	getSingleUserPerformance,
+};
