@@ -77,6 +77,7 @@ const getMyContacts = async (req, res) => {
 	try {
 		const contacts = await Contact.find({
 			contactOwner: req.user.id,
+			isActive: true,
 		}).populate('account');
 
 		return res.status(200).json(contacts);

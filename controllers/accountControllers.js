@@ -205,7 +205,33 @@ const deleteMyAccount = async (req, res) => {
 
 const getAllAccounts = async (req, res) => {
   try {
-    const accounts = await Account.find().populate('accountOwner');
+    const accounts = await Account.aggregate([
+      // Join Account Owner
+      {
+        $lookup: {
+          from: 'users', // collection name of User model
+          localField: 'accountOwner',
+          foreignField: '_id',
+          as: 'accountOwner',
+        },
+      },
+      {
+        $unwind: {
+          path: '$accountOwner',
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+
+      // Join Contacts
+      {
+        $lookup: {
+          from: 'contacts', // collection name of Contact model
+          localField: '_id',
+          foreignField: 'account',
+          as: 'contacts',
+        },
+      },
+    ]);
 
     return res.status(200).json(accounts);
   } catch (err) {
@@ -213,7 +239,6 @@ const getAllAccounts = async (req, res) => {
     return res.status(500).json({ msg: 'Internal server error!!!' });
   }
 };
-
 module.exports = {
   createAccount,
   updateMyAccount,

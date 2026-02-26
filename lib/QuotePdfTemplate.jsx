@@ -15,7 +15,7 @@ const getQuoteHtml = (quote) => {
     .map(
       (t) => `
         <tr>
-          <td class="text-right">
+          <td class="text-right capitalize">
             ${capitalize(t.tax)} (${t.percent}%)
           </td>
           <td class="text-right">
@@ -262,11 +262,7 @@ const getQuoteHtml = (quote) => {
       <td class="label text-right">GST (18%):</td>
       <td class="text-right">${formatCurrency(quote.gstAmount)}</td>
     </tr>`
-        : `
-    <tr>
-      <td class="label text-right">GST (18%):</td>
-      <td class="text-right">Excluded</td>
-    </tr>`
+        : ``
     }
     ${otherTaxRows}
     <tr class="grand">
