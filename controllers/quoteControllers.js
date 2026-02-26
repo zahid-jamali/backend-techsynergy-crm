@@ -268,6 +268,7 @@ const updateQuote = async (req, res) => {
 			validUntil,
 			description,
 			products,
+			termsAndConditions,
 			isGstApplied,
 			currency,
 			otherTax, // ✅ NEW
@@ -279,6 +280,8 @@ const updateQuote = async (req, res) => {
 		if (validUntil !== undefined) quote.validUntil = validUntil;
 		if (description !== undefined) quote.description = description;
 		if (currency !== undefined) quote.currency = currency;
+		if (termsAndConditions !== undefined)
+			quote.termsAndConditions = termsAndConditions;
 
 		const GST_RATE = 0.18;
 		const round = (n) => Math.round(n * 100) / 100;
