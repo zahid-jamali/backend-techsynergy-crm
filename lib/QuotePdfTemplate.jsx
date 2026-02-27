@@ -35,9 +35,6 @@ const getQuoteHtml = (quote) => {
 <meta charset="UTF-8" />
 
 <style>
-  @page {
-    margin: 110px 40px 60px 40px;
-  }
 
   body {
     font-family: "Helvetica Neue", Arial, sans-serif;
@@ -45,6 +42,9 @@ const getQuoteHtml = (quote) => {
     color: #111;
     margin: 0;
   }
+  html, body {
+  height: auto;
+}
 
   .container {
     width: 100%;
@@ -78,11 +78,15 @@ const getQuoteHtml = (quote) => {
     margin: 15px 0 25px;
   }
 
-  .top-info {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 25px;
-  }
+.top-info {
+  width: 100%;
+}
+
+.top-info > div {
+  display: inline-block;
+  width: 49%;
+  vertical-align: top;
+}
 
   .top-info p {
     margin: 4px 0;
@@ -146,9 +150,16 @@ const getQuoteHtml = (quote) => {
     padding-left: 18px;
   }
 
-  .footer-space {
-    height: 120px;
-  }
+table,
+.top-info,
+.totals,
+.terms {
+  page-break-inside: avoid;
+}
+
+tr {
+  page-break-inside: avoid;
+}
 
   .footer {
     position: fixed;

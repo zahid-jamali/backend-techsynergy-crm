@@ -33,6 +33,12 @@ const generateQuotePdf = async (req, res) => {
 		const pdf = await page.pdf({
 			format: 'A4',
 			printBackground: true,
+			margin: {
+				top: '40px',
+				bottom: '80px',
+				left: '40px',
+				right: '40px',
+			},
 		});
 
 		await browser.close();

@@ -181,10 +181,18 @@ const deleteContact = async (req, res) => {
 	try {
 		const { id } = req.params;
 
-		const contact = await Contact.findOne({
-			_id: id,
-			contactOwner: req.user.id,
-		});
+		const usr = await User.findById(req.user.id);
+
+		let contact;
+
+		if (usr.isSuperUser) {
+			contact = await Contact.findById(id);
+		} else {
+			contact = await Contact.findOne({
+				_id: id,
+				contactOwner: req.user.id,
+			});
+		}
 
 		if (!contact) {
 			return res.status(404).json({
