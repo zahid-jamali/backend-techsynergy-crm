@@ -15,7 +15,7 @@ const getQuoteHtml = (quote) => {
     .map(
       (t) => `
         <tr>
-          <td class="text-right capitalize">
+          <td class="text-right uppercase">
             ${capitalize(t.tax)} (${t.percent}%)
           </td>
           <td class="text-right">

@@ -161,7 +161,7 @@ const createQuote = async (req, res) => {
 		/* ---------------- GENERATE QUOTE NUMBER ---------------- */
 
 		const seq = await getNextSequence('quotation');
-		const quoteNumber = `TS-QUO-${String(seq).padStart(5, '0')}`;
+		const quoteNumber = `TIPL-${String(seq).padStart(5, '0')}`;
 
 		/* ---------------- CREATE QUOTE ---------------- */
 

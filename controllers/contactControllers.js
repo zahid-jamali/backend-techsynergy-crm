@@ -1,5 +1,6 @@
 const Contact = require('../models/Contacts.js');
 const mongoose = require('mongoose');
+const User = require('../models/Users');
 
 const createContact = async (req, res) => {
 	try {
@@ -91,10 +92,18 @@ const updateContact = async (req, res) => {
 	try {
 		const { id } = req.params;
 
-		const contact = await Contact.findOne({
-			_id: id,
-			contactOwner: req.user.id,
-		});
+		const usr = await User.findById(req.user.id);
+
+		let contact;
+
+		if (usr.isSuperUser) {
+			contact = await Contact.findById(id);
+		} else {
+			contact = await Contact.findOne({
+				_id: id,
+				contactOwner: req.user.id,
+			});
+		}
 
 		if (!contact) {
 			return res.status(404).json({
@@ -207,7 +216,9 @@ const deleteContact = async (req, res) => {
 
 const getAllContacts = async (req, res) => {
 	try {
-		const contacts = await Contact.find().populate('contactOwner');
+		const contacts = await Contact.find()
+			.populate('contactOwner')
+			.populate('account');
 
 		return res.status(200).json(contacts);
 	} catch (err) {

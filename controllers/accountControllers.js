@@ -1,4 +1,5 @@
 const Account = require('../models/Account.js');
+const User = require('../models/Users');
 
 const createAccount = async (req, res) => {
   try {
@@ -87,11 +88,18 @@ const updateMyAccount = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Find account owned by logged-in user
-    const account = await Account.findOne({
-      _id: id,
-      accountOwner: req.user.id,
-    });
+    const usr = await User.findById(req.user.id);
+    let account;
+    if (usr.isSuperUser) {
+      account = await Account.findOne({
+        _id: id,
+      });
+    } else {
+      account = await Account.findOne({
+        _id: id,
+        accountOwner: req.user.id,
+      });
+    }
 
     if (!account) {
       return res.status(404).json({
@@ -170,10 +178,18 @@ const deleteMyAccount = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const account = await Account.findOne({
-      _id: id,
-      accountOwner: req.user.id,
-    });
+    const usr = await User.findById(req.user.id);
+    let account;
+    if (usr.isSuperUser) {
+      account = await Account.findOne({
+        _id: id,
+      });
+    } else {
+      account = await Account.findOne({
+        _id: id,
+        accountOwner: req.user.id,
+      });
+    }
 
     if (!account) {
       return res.status(404).json({
