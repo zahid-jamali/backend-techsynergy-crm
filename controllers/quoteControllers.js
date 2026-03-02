@@ -459,7 +459,6 @@ const updateQuoteStage = async (req, res) => {
 				});
 			}
 
-			deal.probability = probability;
 			deal.amount = quote.subTotal;
 			deal.currency = quote.currency;
 

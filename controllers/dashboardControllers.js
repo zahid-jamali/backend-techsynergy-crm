@@ -240,10 +240,20 @@ const getAdminDashboard = async (req, res) => {
 				},
 			},
 			{
+				$lookup: {
+					from: 'accounts',
+					localField: 'account',
+					foreignField: '_id',
+					as: 'account',
+				},
+			},
+			{ $unwind: '$account' },
+			{
 				$project: {
 					dealName: 1,
 					stage: 1,
 					amount: '$normalizedAmount',
+					account: 1,
 				},
 			},
 			{ $sort: { amount: -1 } },
@@ -256,6 +266,7 @@ const getAdminDashboard = async (req, res) => {
 					isActive: true,
 				},
 			},
+
 			{
 				$addFields: {
 					normalizedAmount: {

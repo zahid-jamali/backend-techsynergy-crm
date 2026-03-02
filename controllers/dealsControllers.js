@@ -1,15 +1,22 @@
 const mongoose = require('mongoose');
 const Deals = require('../models/Deals.js');
+const User = require('../models/Users');
+
+const stageProbabilityMap = {
+	Qualification: 10,
+	'Needs Analysis': 20,
+	'Value Proposition': 35,
+	'Identify Decision Makers': 45,
+	'Proposal/Price Quote': 60,
+	'Negotiation/Review': 80,
+	'Closed Won': 100,
+	'Closed Lost': 0,
+	'Closed Lost to Competition': 0,
+};
 
 const updateDeal = async (req, res) => {
 	try {
 		const { id } = req.params;
-
-		if (!mongoose.Types.ObjectId.isValid(id)) {
-			return res
-				.status(400)
-				.json({ success: false, msg: 'Invalid deal ID' });
-		}
 
 		let {
 			dealName,
@@ -18,25 +25,23 @@ const updateDeal = async (req, res) => {
 			nextStep,
 			previousStep,
 			amount,
-			probability,
+			currency,
 			closingDate,
 			description,
 			contact,
 		} = req.body;
 
-		const deal = await Deals.findById(id);
-
+		let usr = await User.findById(req.user.id);
+		let deal;
+		if (usr.isSuperUser) {
+			deal = await Deals.findById(id);
+		} else {
+			deal = await Deals.findOne({ _id: id, dealOwner: req.user.id });
+		}
 		if (!deal) {
 			return res
 				.status(404)
 				.json({ success: false, msg: 'Deal not found' });
-		}
-
-		/* 🔒 Ownership check */
-		if (deal.dealOwner.toString() !== req.user.id) {
-			return res
-				.status(403)
-				.json({ success: false, msg: 'Unauthorized' });
 		}
 
 		/* ✅ Normalize */
@@ -46,12 +51,11 @@ const updateDeal = async (req, res) => {
 		deal.nextStep = nextStep ?? deal.nextStep;
 		deal.previousStep = previousStep ?? deal.previousStep;
 		deal.amount = amount !== undefined ? Number(amount) : deal.amount;
-		deal.probability =
-			probability !== undefined ? Number(probability) : deal.probability;
+		deal.currency = currency !== undefined ? currency : deal.currency;
 		deal.closingDate = closingDate || deal.closingDate;
 		deal.description = description ?? deal.description;
 		deal.contact = contact || deal.contact;
-
+		deal.probability = stageProbabilityMap[stage];
 		await deal.save(); // expectedRevenue recalculated automatically
 
 		return res.json({
@@ -87,6 +91,7 @@ const updateDealStage = async (req, res) => {
 		deal.previousStep = deal.stage;
 		deal.stage = stage;
 		deal.nextStep = nextStep || '';
+		deal.probability = stageProbabilityMap[stage];
 
 		await deal.save();
 
@@ -113,7 +118,6 @@ const createDeal = async (req, res) => {
 			previousStep,
 			amount,
 			currency,
-			probability,
 			closingDate,
 			description,
 			meta,
@@ -151,7 +155,7 @@ const createDeal = async (req, res) => {
 			nextStep,
 			previousStep,
 			amount,
-			probability,
+			probability: stageProbabilityMap.stage,
 			closingDate,
 			description,
 			meta,
