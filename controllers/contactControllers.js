@@ -223,12 +223,21 @@ const deleteContact = async (req, res) => {
 // =========================================================================================
 
 const getAllContacts = async (req, res) => {
+	const page = parseInt(req.query.page) || 1;
+	const limit = parseInt(req.query.limit) || 20;
+	const skip = (page - 1) * limit;
+
 	try {
 		const contacts = await Contact.find()
 			.populate('contactOwner')
-			.populate('account');
-
-		return res.status(200).json(contacts);
+			.populate('account')
+			.sort({ createdAt: -1 })
+			.skip(skip)
+			.limit(limit);
+		const total = await Contact.countDocuments();
+		return res
+			.status(200)
+			.json({ contacts, hasMore: total > skip + limit, total, page });
 	} catch (err) {
 		console.log(err);
 		return res.status(500).json({ msg: 'Internal server error!!!' });

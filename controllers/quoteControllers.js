@@ -496,17 +496,25 @@ const updateQuoteStage = async (req, res) => {
 // =======================================================================================
 
 const getAllQuotes = async (req, res) => {
+	const page = parseInt(req.query.page) || 1;
+	const limit = parseInt(req.query.limit) || 20;
+	const skip = (page - 1) * limit;
 	try {
 		const quotes = await Quote.find({})
 			.populate('deal', 'dealName')
 			.populate('account', 'accountName')
 			.populate('contact', 'firstName lastName')
 			.populate('quoteOwner')
-			.sort({ createdAt: -1 });
+			.sort({ createdAt: -1 })
+			.skip(skip)
+			.limit(limit);
 
+		const total = await Quote.countDocuments();
 		return res.json({
 			success: true,
 			data: quotes,
+			total,
+			hasMore: total > skip + limit,
 		});
 	} catch (error) {
 		console.error('Get Quotes Error:', error);

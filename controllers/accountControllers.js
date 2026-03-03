@@ -221,6 +221,10 @@ const deleteMyAccount = async (req, res) => {
 
 const getAllAccounts = async (req, res) => {
   try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+
+    const skip = (page - 1) * limit;
     const accounts = await Account.aggregate([
       // Join Account Owner
       {
@@ -247,9 +251,23 @@ const getAllAccounts = async (req, res) => {
           as: 'contacts',
         },
       },
+      { $sort: { createdAt: -1 } },
+      {
+        $skip: skip,
+      },
+      {
+        $limit: limit,
+      },
     ]);
 
-    return res.status(200).json(accounts);
+    let accountCount = await Account.countDocuments();
+
+    return res.status(200).json({
+      accounts,
+      page,
+      hasMore: accountCount > limit + skip ? true : false,
+      total: accountCount,
+    });
   } catch (err) {
     console.log(err);
     return res.status(500).json({ msg: 'Internal server error!!!' });

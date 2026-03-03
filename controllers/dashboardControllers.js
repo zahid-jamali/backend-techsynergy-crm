@@ -12,95 +12,104 @@ const getSingleUserPerformance = async (req, res) => {
 	try {
 		const userId = req.params.id;
 
-		const user = await User.findById(userId).select('-password');
+		/* ================= USER INFO ================= */
+
+		const user = await User.findById(userId).select(
+			'_id name email phone role isActive createdAt'
+		);
+
 		if (!user) {
 			return res.status(404).json({ message: 'User not found' });
 		}
 
-		const deals = await Deal.find({ dealOwner: userId });
-		const quotes = await Quote.find({ quoteOwner: userId });
+		/* ================= FETCH RELATED DATA ================= */
 
+		const deals = await Deal.find({ dealOwner: userId })
+			.populate('account', 'accountName')
+			.populate('contact', 'firstName lastName')
+			.populate('dealOwner', 'name');
+
+		const quotes = await Quote.find({ quoteOwner: userId })
+			.populate('contact', 'firstName lastName')
+			.populate('deal')
+			.populate('quoteOwner', 'name');
+
+		// If you have SellOrder model
+		// const sellOrders = await SellOrder.find({ owner: userId })
+		// 	.populate('account', 'accountName')
+		// 	.populate('contact', 'firstName lastName');
+
+		const sellOrders = await Quote.find({
+			quoteOwner: userId,
+			stage: 'Confirmed',
+		})
+			.populate('account', 'accountName')
+			.populate('contact', 'firstName lastName');
 		/* ================= DEAL CALCULATIONS ================= */
+
+		const totalDeals = deals.length;
 
 		const closedWonDeals = deals.filter((d) => d.stage === 'Closed Won');
 
 		const totalRevenue = closedWonDeals.reduce(
-			(sum, d) => sum + (d.amount || 0),
+			(sum, deal) => sum + (deal.amount || 0),
 			0
 		);
 
-		const activePipeline = deals
-			.filter((d) => !['Closed Won', 'Closed Lost'].includes(d.stage))
-			.reduce((sum, d) => sum + (d.amount || 0), 0);
-
-		const conversionRate =
-			deals.length > 0
-				? ((closedWonDeals.length / deals.length) * 100).toFixed(1)
+		const winRate =
+			totalDeals > 0
+				? Number(((closedWonDeals.length / totalDeals) * 100).toFixed(1))
 				: 0;
 
-		/* ================= SELL ORDERS ================= */
+		/* ================= QUOTES ================= */
 
-		const confirmedQuotes = quotes.filter(
-			(q) => q.quoteStage === 'Confirmed'
+		const totalQuotes = quotes.length;
+
+		/* ================= ACTIVE FILTERS FOR TABLES ================= */
+
+		const activeDeals = deals.filter(
+			(d) => !['Closed Won', 'Closed Lost'].includes(d.stage)
 		);
 
-		/* ================= DEAL STAGE DISTRIBUTION ================= */
-
-		const dealStageMap = {};
-		deals.forEach((d) => {
-			dealStageMap[d.stage] = (dealStageMap[d.stage] || 0) + 1;
-		});
-
-		const dealStages = Object.entries(dealStageMap).map(([stage, count]) => ({
-			stage,
-			count,
-		}));
-
-		/* ================= QUOTE STATUS ================= */
-
-		const quoteStageMap = {};
-		quotes.forEach((q) => {
-			quoteStageMap[q.quoteStage] = (quoteStageMap[q.quoteStage] || 0) + 1;
-		});
-
-		const quoteStatuses = Object.entries(quoteStageMap).map(
-			([stage, count]) => ({ stage, count })
+		const activeQuotes = quotes.filter(
+			(q) => !['Rejected', 'Cancelled'].includes(q.quoteStage)
 		);
 
-		/* ================= MONTHLY REVENUE ================= */
-
-		const monthlyRevenueMap = {};
-
-		closedWonDeals.forEach((d) => {
-			const month = new Date(d.createdAt).toLocaleString('default', {
-				month: 'short',
-			});
-
-			monthlyRevenueMap[month] =
-				(monthlyRevenueMap[month] || 0) + (d.amount || 0);
-		});
-
-		const revenueTrend = Object.entries(monthlyRevenueMap).map(
-			([month, revenue]) => ({ month, revenue })
+		const activeSellOrders = sellOrders.filter(
+			(s) => s.status !== 'Cancelled'
 		);
 
-		res.json({
-			user,
-			stats: {
-				totalDeals: deals.length,
-				totalQuotes: quotes.length,
-				totalSellOrders: confirmedQuotes.length,
-				totalRevenue,
-				activePipeline,
-				conversionRate,
+		/* ================= RESPONSE ================= */
+
+		res.status(200).json({
+			user: {
+				_id: user._id,
+				name: user.name,
+				isActive: user.isActive,
+				email: user.email,
+				phone: user.phone,
+				role: user.role,
+				createdAt: user.createdAt,
 			},
-			dealStages,
-			quoteStatuses,
-			revenueTrend,
+
+			stats: {
+				totalDeals,
+				totalRevenue,
+				winRate,
+				totalQuotes,
+			},
+
+			tables: {
+				activeDeals,
+				activeQuotes,
+				activeSellOrders,
+			},
 		});
-	} catch (err) {
-		console.error(err);
-		res.status(500).json({ message: 'Failed to load user performance' });
+	} catch (error) {
+		console.error(error);
+		res.status(500).json({
+			message: 'Failed to load single user performance',
+		});
 	}
 };
 

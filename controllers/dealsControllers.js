@@ -193,9 +193,22 @@ const getMyDeals = async (req, res) => {
 // =========================================================================================
 
 const getAllDeals = async (req, res) => {
+	const page = parseInt(req.query.page) || 1;
+	const limit = parseInt(req.query.limit) || 20;
+	const skip = (page - 1) * limit;
 	try {
-		const data = await Deals.find().populate('account contact dealOwner');
-		res.status(200).send(data);
+		const data = await Deals.find()
+			.populate('account contact dealOwner')
+			.sort({ createdAt: -1 })
+			.skip(skip)
+			.limit(limit);
+		const total = await Deals.countDocuments();
+		res.status(200).send({
+			data,
+			page,
+			total,
+			hasMore: total > limit + skip,
+		});
 	} catch (err) {
 		console.error(err);
 		res.status(500).json({ msg: 'Internal server error!!!' });
