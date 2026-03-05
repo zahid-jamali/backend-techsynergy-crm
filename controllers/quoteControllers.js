@@ -442,37 +442,37 @@ const updateQuoteStage = async (req, res) => {
 			}
 		}
 
-		if (quoteStage === 'Delivered') {
-			if (!probability) {
-				return res.status(400).json({
-					success: false,
-					msg: 'Delivered quote must have probability',
-				});
-			}
+		// if (quoteStage === 'Delivered') {
+		// 	if (!probability) {
+		// 		return res.status(400).json({
+		// 			success: false,
+		// 			msg: 'Delivered quote must have probability',
+		// 		});
+		// 	}
 
-			const deal = await Deals.findById(quote.deal);
+		// 	const deal = await Deals.findById(quote.deal);
 
-			if (!deal) {
-				return res.status(404).json({
-					success: false,
-					msg: 'Associated deal not found',
-				});
-			}
+		// 	if (!deal) {
+		// 		return res.status(404).json({
+		// 			success: false,
+		// 			msg: 'Associated deal not found',
+		// 		});
+		// 	}
 
-			deal.amount = quote.subTotal;
-			deal.currency = quote.currency;
+		// 	deal.amount = quote.subTotal;
+		// 	deal.currency = quote.currency;
 
-			await deal.save();
+		// 	await deal.save();
 
-			await Quote.updateMany(
-				{
-					deal: quote.deal,
-					_id: { $ne: quote._id },
-					quoteStage: 'Delivered',
-				},
-				{ $set: { quoteStage: 'On Hold' } }
-			);
-		}
+		// 	await Quote.updateMany(
+		// 		{
+		// 			deal: quote.deal,
+		// 			_id: { $ne: quote._id },
+		// 			quoteStage: 'Delivered',
+		// 		},
+		// 		{ $set: { quoteStage: 'On Hold' } }
+		// 	);
+		// }
 
 		quote.quoteStage = quoteStage;
 		await quote.save();
