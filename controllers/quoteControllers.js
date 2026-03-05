@@ -6,6 +6,7 @@ const getNextSequence = require('../lib/getNextSequence.js');
 const Product = require('../models/Products');
 const convertCurrency = require('../lib/convertCurrency');
 const Deals = require('../models/Deals');
+const User = require('../models/Users');
 
 const generateQuotePdf = async (req, res) => {
 	try {
@@ -419,6 +420,7 @@ const updateQuoteStage = async (req, res) => {
 			});
 		}
 
+		const usr = await User.findById(req.user.id);
 		if (quoteStage === 'Confirmed') {
 			if (!req.file) {
 				return res.status(400).json({
@@ -433,6 +435,21 @@ const updateQuoteStage = async (req, res) => {
 			};
 
 			quote.confirmedDate = new Date();
+
+			if (usr.isSuperUser) {
+				quote.isSOApproved = true;
+				const owner = quote.quoteOwner;
+
+				if (quote.currency === 'USD') {
+					totalInPKR = convertCurrency(quote.subTotal, 'USD', 'PKR');
+					owner.totalSell = (owner.totalSell || 0) + totalInPKR;
+				} else {
+					owner.totalSell = (owner.totalSell || 0) + quote.subTotal;
+				}
+
+				owner.totalSell = (owner.totalSell || 0) + quote.subTotal;
+				await owner.save();
+			}
 		} else {
 			if (req.file) {
 				return res.status(400).json({
@@ -441,38 +458,6 @@ const updateQuoteStage = async (req, res) => {
 				});
 			}
 		}
-
-		// if (quoteStage === 'Delivered') {
-		// 	if (!probability) {
-		// 		return res.status(400).json({
-		// 			success: false,
-		// 			msg: 'Delivered quote must have probability',
-		// 		});
-		// 	}
-
-		// 	const deal = await Deals.findById(quote.deal);
-
-		// 	if (!deal) {
-		// 		return res.status(404).json({
-		// 			success: false,
-		// 			msg: 'Associated deal not found',
-		// 		});
-		// 	}
-
-		// 	deal.amount = quote.subTotal;
-		// 	deal.currency = quote.currency;
-
-		// 	await deal.save();
-
-		// 	await Quote.updateMany(
-		// 		{
-		// 			deal: quote.deal,
-		// 			_id: { $ne: quote._id },
-		// 			quoteStage: 'Delivered',
-		// 		},
-		// 		{ $set: { quoteStage: 'On Hold' } }
-		// 	);
-		// }
 
 		quote.quoteStage = quoteStage;
 		await quote.save();

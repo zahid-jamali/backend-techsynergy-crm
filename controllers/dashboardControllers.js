@@ -228,6 +228,7 @@ const getAdminDashboard = async (req, res) => {
 		]);
 
 		const pipelineValue = pipelineAgg[0]?.totalPipelineValue || 0;
+		// console.log(pipelineValue);
 
 		/* =============================================================*/
 
@@ -657,7 +658,7 @@ const getAdminDashboard = async (req, res) => {
 			USD_RATE,
 			summaryStats: {
 				totalRevenue: stats.totalRevenue || 0,
-				pipelineValue: stats.pipelineValue || 0,
+				pipelineValue: pipelineValue || 0,
 				expectedRevenue: stats.expectedRevenue || 0,
 				avgDealSize: Math.round(stats.avgDealSize || 0),
 				winRate: Number(winRate),

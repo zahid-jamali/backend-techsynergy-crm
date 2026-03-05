@@ -80,11 +80,12 @@ const updateDealStage = async (req, res) => {
 				.status(404)
 				.json({ success: false, msg: 'Deal not found' });
 		}
-
-		if (deal.dealOwner.toString() !== req.user.id) {
-			return res
-				.status(403)
-				.json({ success: false, msg: 'Unauthorized' });
+		const tmp = await User.findById(req.user.id);
+		if (deal.dealOwner.toString() !== req.user.id && !tmp.isSuperUser) {
+			return res.status(403).json({
+				success: false,
+				msg: 'Unauthorized',
+			});
 		}
 
 		/* 🔄 Maintain previous step */

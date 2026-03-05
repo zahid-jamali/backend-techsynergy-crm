@@ -286,13 +286,19 @@ tr {
   <div class="terms">
     <strong>Terms & Conditions:</strong>
     <ul>
-      <li>
-        This quotation is valid until ${
-          quote.validUntil
-            ? new Date(quote.validUntil).toLocaleDateString()
-            : '-'
-        }.
-      </li>
+${
+  quote.validUntil
+    ? `<li>
+        This quotation is valid for ${Math.max(
+          0,
+          Math.ceil(
+            (new Date(quote.validUntil) - new Date()) / (1000 * 60 * 60 * 24)
+          )
+        )} days.
+      </li>`
+    : '-'
+}
+       
       ${(quote.termsAndConditions || [])
         .filter((t) => t.trim())
         .map((t) => `<li>${capitalize(t)}</li>`)
