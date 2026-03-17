@@ -394,22 +394,22 @@ const updateQuoteStage = async (req, res) => {
 		const { id } = req.params;
 		const { quoteStage, probability } = req.body;
 
-		const allowedStages = [
-			'Draft',
-			'Negotiation',
-			'Delivered',
-			'On Hold',
-			'Confirmed',
-			'Closed Won',
-			'Closed Lost',
-		];
+		// const allowedStages = [
+		// 	'Draft',
+		// 	'Negotiation',
+		// 	'Delivered',
+		// 	'On Hold',
+		// 	'Confirmed',
+		// 	'Closed Won',
+		// 	'Closed Lost',
+		// ];
 
-		if (!allowedStages.includes(quoteStage)) {
-			return res.status(400).json({
-				success: false,
-				msg: 'Invalid quote stage',
-			});
-		}
+		// if (!allowedStages.includes(quoteStage)) {
+		// 	return res.status(400).json({
+		// 		success: false,
+		// 		msg: 'Invalid quote stage',
+		// 	});
+		// }
 
 		const quote = await Quote.findById(id);
 
@@ -459,7 +459,17 @@ const updateQuoteStage = async (req, res) => {
 			}
 		}
 
-		quote.quoteStage = quoteStage;
+		if (quoteStage === 'Submit') {
+			console.log('submit quote stage');
+			const deal = await Deals.findById(quote.deal);
+			deal.amount = quote.grandTotal;
+			deal.currency = quote.currency;
+			deal.closingDate = quote.validUntil;
+			console.log(deal);
+			await deal.save();
+		}
+
+		quote.quoteStage = quoteStage === 'Submit' ? 'Delivered' : quoteStage;
 		await quote.save();
 
 		return res.json({
@@ -484,8 +494,10 @@ const getAllQuotes = async (req, res) => {
 	const page = parseInt(req.query.page) || 1;
 	const limit = parseInt(req.query.limit) || 20;
 	const skip = (page - 1) * limit;
+	const stage = req.query.stage;
 	try {
-		const quotes = await Quote.find({})
+		const filter = stage ? { quoteStage: stage } : {};
+		const quotes = await Quote.find(filter)
 			.populate('deal', 'dealName')
 			.populate('account', 'accountName')
 			.populate('contact', 'firstName lastName')
@@ -494,7 +506,8 @@ const getAllQuotes = async (req, res) => {
 			.skip(skip)
 			.limit(limit);
 
-		const total = await Quote.countDocuments();
+		// const total = await Quote.countDocuments();
+		const total = quotes.length;
 		return res.json({
 			success: true,
 			data: quotes,
