@@ -394,23 +394,6 @@ const updateQuoteStage = async (req, res) => {
 		const { id } = req.params;
 		const { quoteStage, probability } = req.body;
 
-		// const allowedStages = [
-		// 	'Draft',
-		// 	'Negotiation',
-		// 	'Delivered',
-		// 	'On Hold',
-		// 	'Confirmed',
-		// 	'Closed Won',
-		// 	'Closed Lost',
-		// ];
-
-		// if (!allowedStages.includes(quoteStage)) {
-		// 	return res.status(400).json({
-		// 		success: false,
-		// 		msg: 'Invalid quote stage',
-		// 	});
-		// }
-
 		const quote = await Quote.findById(id);
 
 		if (!quote) {
@@ -431,7 +414,7 @@ const updateQuoteStage = async (req, res) => {
 
 			quote.purchaseOrder = {
 				public_id: req.file.filename,
-				url: req.file.path,
+				url: `${req.file.path}`, //req.file.path,
 			};
 
 			quote.confirmedDate = new Date();
@@ -460,7 +443,6 @@ const updateQuoteStage = async (req, res) => {
 		}
 
 		if (quoteStage === 'Submit') {
-			console.log('submit quote stage');
 			const deal = await Deals.findById(quote.deal);
 			deal.amount = quote.grandTotal;
 			deal.currency = quote.currency;
