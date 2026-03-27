@@ -8,6 +8,12 @@ const getQuoteHtml = (quote) => {
       maximumFractionDigits: 2,
     })}`;
 
+  const capitalize = (value) => {
+    if (!value || typeof value !== 'string') return '';
+
+    return value.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
   const otherTaxRows = (quote.otherTax || [])
     .map(
       (t) => `
