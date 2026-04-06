@@ -13,6 +13,7 @@ const poToVendorRoutes = require('./routes/poToVendorRoutes');
 const invoiceRoutes = require('./routes/invoiceRoutes');
 const salesTargetRoutes = require('./routes/salesTargetRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
+const orderRoutes = require('./routes/orderRoutes');
 
 const app = express();
 app.use(cors({ origin: '*' }));
@@ -29,8 +30,12 @@ app.use('/api/products/', productRoutes);
 app.use('/api/vendors/', vendorRoutes);
 app.use('/api/potovendor/', poToVendorRoutes);
 app.use('/api/invoice/', invoiceRoutes);
-app.use('/api/sales-target', salesTargetRoutes);
-app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/sales-target/', salesTargetRoutes);
+app.use('/api/dashboard/', dashboardRoutes);
+app.use('/api/orders/', orderRoutes);
+
+// for static PO rendering
+app.use('/uploads', express.static('uploads'));
 
 const port = process.env.PORT || 2222;
 console.log(`Server is running on ${port}`);

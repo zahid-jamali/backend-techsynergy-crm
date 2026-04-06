@@ -18,7 +18,6 @@ const generateQuotePdf = async (req, res) => {
 		if (!quote) {
 			return res.status(404).send('Quote not found');
 		}
-		console.log(quote);
 
 		const browser = await puppeteer.launch({
 			headless: 'new',
@@ -34,9 +33,12 @@ const generateQuotePdf = async (req, res) => {
 		const pdf = await page.pdf({
 			format: 'A4',
 			printBackground: true,
+
+			displayHeaderFooter: false,
+
 			margin: {
 				top: '40px',
-				bottom: '80px',
+				bottom: '120px',
 				left: '40px',
 				right: '40px',
 			},
@@ -66,11 +68,11 @@ const createQuote = async (req, res) => {
 			products,
 			currency,
 			description,
-			isGstApplied,
-			gstRate = 18,
 			termsAndConditions,
-			otherTax = [], // NEW
+			otherTax = [],
 		} = req.body;
+
+		/* ---------------- VALIDATION ---------------- */
 
 		if (!subject || !deal) {
 			return res.status(400).json({
@@ -91,18 +93,15 @@ const createQuote = async (req, res) => {
 		/* ---------------- PRODUCT CALCULATIONS ---------------- */
 
 		let subTotal = 0;
-		let discountTotal = 0;
 
 		const calculatedProducts = products.map((p, index) => {
 			const quantity = Number(p.quantity) || 1;
 			const listPrice = Number(p.listPrice) || 0;
-			const discount = Number(p.discount) || 0;
 
 			const amount = quantity * listPrice;
-			const total = amount - discount;
+			const total = amount;
 
-			subTotal += amount;
-			discountTotal += discount;
+			subTotal += total;
 
 			return {
 				serialNo: index + 1,
@@ -110,35 +109,24 @@ const createQuote = async (req, res) => {
 				description: p.description || '',
 				quantity,
 				listPrice,
-				discount,
 				amount: round(amount),
 				total: round(total),
 			};
 		});
 
 		subTotal = round(subTotal);
-		discountTotal = round(discountTotal);
 
-		const taxableAmount = subTotal - discountTotal;
+		/* ---------------- TAX CALCULATION ---------------- */
 
-		/* ---------------- GST CALCULATION ---------------- */
-
-		let gstAmount = 0;
-
-		if (isGstApplied === true) {
-			gstAmount = round((taxableAmount * Number(gstRate)) / 100);
-		}
-
-		/* ---------------- OTHER TAX CALCULATION ---------------- */
-
-		let otherTaxAmount = 0;
+		let taxAmount = 0;
 
 		const calculatedOtherTaxes = Array.isArray(otherTax)
 			? otherTax.map((t) => {
 					const percent = Number(t.percent) || 0;
-					const taxValue = round((taxableAmount * percent) / 100);
 
-					otherTaxAmount += taxValue;
+					const taxValue = round((subTotal * percent) / 100);
+
+					taxAmount += taxValue;
 
 					return {
 						tax: t.tax,
@@ -147,15 +135,16 @@ const createQuote = async (req, res) => {
 				})
 			: [];
 
-		otherTaxAmount = round(otherTaxAmount);
+		taxAmount = round(taxAmount);
 
 		/* ---------------- GRAND TOTAL ---------------- */
 
-		const grandTotal = round(taxableAmount + gstAmount + otherTaxAmount);
+		const grandTotal = round(subTotal + taxAmount);
 
 		/* ---------------- GET ACCOUNT FROM DEAL ---------------- */
 
 		const dealTmp = await Deals.findById(deal);
+
 		if (!dealTmp) {
 			return res.status(404).json({
 				success: false,
@@ -168,29 +157,36 @@ const createQuote = async (req, res) => {
 		/* ---------------- GENERATE QUOTE NUMBER ---------------- */
 
 		const seq = await getNextSequence('quotation');
+
 		const quoteNumber = `TIPL-${String(seq).padStart(5, '0')}`;
 
 		/* ---------------- CREATE QUOTE ---------------- */
 
 		const quote = await Quote.create({
 			quoteOwner: req.user.id,
+
 			subject: subject.trim(),
+
 			deal,
 			account,
 			contact,
+
 			validUntil,
+
 			products: calculatedProducts,
+
 			termsAndConditions,
+
 			description,
+
 			quoteNumber,
+
 			currency,
-			isGstApplied: Boolean(isGstApplied),
-			gstRate,
-			gstAmount,
+
 			otherTax: calculatedOtherTaxes,
-			otherTaxAmount,
+
 			subTotal,
-			discountTotal,
+			taxAmount,
 			grandTotal,
 		});
 
@@ -201,7 +197,9 @@ const createQuote = async (req, res) => {
 				if (!p.productName) return;
 
 				await Product.findOneAndUpdate(
-					{ title: p.productName.trim() },
+					{
+						title: p.productName.trim(),
+					},
 					{
 						$set: {
 							previousQuotePrice: Number(p.listPrice) || 0,
@@ -222,6 +220,7 @@ const createQuote = async (req, res) => {
 		});
 	} catch (error) {
 		console.error('Create Quote Error:', error);
+
 		return res.status(500).json({
 			success: false,
 			msg: 'Server error while creating quote',
@@ -231,24 +230,63 @@ const createQuote = async (req, res) => {
 
 const getMyQuotes = async (req, res) => {
 	try {
-		const quotes = await Quote.find({
+		const { stage, page = 1, limit = 10, search = '' } = req.query;
+
+		const filter = {
 			quoteOwner: req.user.id,
 			isActive: true,
-		})
-			.populate('deal')
-			.populate('account', 'accountName')
-			.populate('contact', 'firstName lastName')
-			.sort({ createdAt: -1 });
+		};
+
+		if (stage) {
+			filter.quoteStage = stage;
+		}
+
+		if (search) {
+			filter.$or = [
+				{
+					subject: {
+						$regex: search,
+						$options: 'i',
+					},
+				},
+			];
+		}
+
+		const skip = (Number(page) - 1) * Number(limit);
+
+		const [quotes, total] = await Promise.all([
+			Quote.find(filter)
+				.populate('deal')
+				.populate('account', 'accountName')
+				.populate('contact', 'firstName lastName')
+				.sort({
+					createdAt: -1,
+				})
+				.skip(skip)
+				.limit(Number(limit))
+				.lean(),
+
+			Quote.countDocuments(filter),
+		]);
 
 		return res.json({
 			success: true,
+
 			data: quotes,
+
+			pagination: {
+				total,
+				page: Number(page),
+				limit: Number(limit),
+				pages: Math.ceil(total / limit),
+			},
 		});
 	} catch (error) {
 		console.error('Get Quotes Error:', error);
+
 		return res.status(500).json({
 			success: false,
-			msg: 'Failed to fetch quotes',
+			message: 'Failed to fetch quotes',
 		});
 	}
 };
@@ -276,39 +314,49 @@ const updateQuote = async (req, res) => {
 			description,
 			products,
 			termsAndConditions,
-			isGstApplied,
 			currency,
-			otherTax, // ✅ NEW
+			otherTax,
 		} = req.body;
-		console.log(req.body);
+
+		/* ================= BASIC FIELDS ================= */
 
 		if (subject !== undefined) quote.subject = subject.trim();
+
 		if (quoteStage !== undefined) quote.quoteStage = quoteStage;
+
 		if (validUntil !== undefined) quote.validUntil = validUntil;
+
 		if (description !== undefined) quote.description = description;
+
 		if (currency !== undefined) quote.currency = currency;
+
 		if (termsAndConditions !== undefined)
 			quote.termsAndConditions = termsAndConditions;
 
-		const GST_RATE = 0.18;
 		const round = (n) => Math.round(n * 100) / 100;
 
 		let subTotal = 0;
-		let discountTotal = 0;
 
 		/* ================= PRODUCTS ================= */
 
 		if (Array.isArray(products)) {
+			if (products.length === 0) {
+				return res.status(400).json({
+					success: false,
+					msg: 'At least one product is required',
+				});
+			}
+
 			quote.products = products.map((p, index) => {
 				const quantity = Number(p.quantity) || 1;
+
 				const listPrice = Number(p.listPrice) || 0;
-				const discount = Number(p.discount) || 0;
 
 				const amount = quantity * listPrice;
-				const total = amount - discount;
 
-				subTotal += amount;
-				discountTotal += discount;
+				const total = amount;
+
+				subTotal += total;
 
 				return {
 					serialNo: index + 1,
@@ -316,44 +364,28 @@ const updateQuote = async (req, res) => {
 					description: p.description || '',
 					quantity,
 					listPrice,
-					discount,
 					amount: round(amount),
 					total: round(total),
 				};
 			});
 		} else {
-			// If products not sent, keep previous values
+			/* If products not updated */
 			subTotal = quote.subTotal || 0;
-			discountTotal = quote.discountTotal || 0;
 		}
 
 		subTotal = round(subTotal);
-		discountTotal = round(discountTotal);
 
-		const taxableAmount = subTotal - discountTotal;
+		/* ================= TAX ================= */
 
-		/* ================= GST ================= */
-
-		const nowGstApplied = isGstApplied === true;
-
-		let gstAmount = 0;
-		if (nowGstApplied) {
-			gstAmount = round(taxableAmount * GST_RATE);
-		}
-
-		quote.isGstApplied = nowGstApplied;
-		quote.gstAmount = gstAmount;
-
-		/* ================= OTHER TAX ================= */
-
-		let otherTaxAmount = 0;
+		let taxAmount = 0;
 
 		if (Array.isArray(otherTax)) {
 			const calculatedOtherTaxes = otherTax.map((t) => {
 				const percent = Number(t.percent) || 0;
-				const taxValue = round((taxableAmount * percent) / 100);
 
-				otherTaxAmount += taxValue;
+				const taxValue = round((subTotal * percent) / 100);
+
+				taxAmount += taxValue;
 
 				return {
 					tax: t.tax,
@@ -362,16 +394,20 @@ const updateQuote = async (req, res) => {
 			});
 
 			quote.otherTax = calculatedOtherTaxes;
+		} else {
+			/* If tax not updated */
+			quote.otherTax = quote.otherTax || [];
 		}
 
-		otherTaxAmount = round(otherTaxAmount);
-		quote.otherTaxAmount = otherTaxAmount;
+		taxAmount = round(taxAmount);
 
-		/* ================= FINAL TOTAL ================= */
+		/* ================= TOTAL ================= */
+
+		const grandTotal = round(subTotal + taxAmount);
 
 		quote.subTotal = subTotal;
-		quote.discountTotal = discountTotal;
-		quote.grandTotal = round(taxableAmount + gstAmount + otherTaxAmount);
+		quote.taxAmount = taxAmount;
+		quote.grandTotal = grandTotal;
 
 		await quote.save();
 
@@ -382,6 +418,7 @@ const updateQuote = async (req, res) => {
 		});
 	} catch (error) {
 		console.error('Update Quote Error:', error);
+
 		return res.status(500).json({
 			success: false,
 			msg: 'Failed to update quote',
@@ -488,8 +525,8 @@ const getAllQuotes = async (req, res) => {
 			.skip(skip)
 			.limit(limit);
 
-		// const total = await Quote.countDocuments();
-		const total = quotes.length;
+		const total = await Quote.countDocuments();
+		// const total = quotes.le
 		return res.json({
 			success: true,
 			data: quotes,
@@ -505,44 +542,6 @@ const getAllQuotes = async (req, res) => {
 	}
 };
 
-const soApproval = async (req, res) => {
-	const { id } = req.params;
-
-	try {
-		const quote = await Quote.findById(id).populate('quoteOwner');
-
-		if (!quote) {
-			return res.status(404).send({ msg: 'Quote not found' });
-		}
-
-		if (!quote.grandTotal || isNaN(quote.grandTotal)) {
-			return res.status(400).send({
-				msg: 'Invalid quote amount',
-			});
-		}
-
-		quote.isSOApproved = true;
-		await quote.save();
-
-		const owner = quote.quoteOwner;
-
-		if (quote.currency === 'USD') {
-			totalInPKR = convertCurrency(quote.subTotal, 'USD', 'PKR');
-			owner.totalSell = (owner.totalSell || 0) + totalInPKR;
-		} else {
-			owner.totalSell = (owner.totalSell || 0) + quote.subTotal;
-		}
-
-		owner.totalSell = (owner.totalSell || 0) + quote.subTotal;
-		await owner.save();
-
-		return res.status(200).send(quote);
-	} catch (error) {
-		console.error(error);
-		return res.status(500).send({ msg: 'Internal Server error!!!' });
-	}
-};
-
 module.exports = {
 	createQuote,
 	getMyQuotes,
@@ -550,7 +549,6 @@ module.exports = {
 	updateQuoteStage,
 	generateQuotePdf,
 	getAllQuotes,
-	soApproval,
 };
 
 // const getQuoteById = async (req, res) => {

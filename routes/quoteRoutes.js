@@ -18,11 +18,5 @@ router.put(
 
 // Admin Routes
 router.get('/all', verifyJWT, requireAdmin, quoteControllers.getAllQuotes);
-router.put(
-	'/:id/so-approve',
-	verifyJWT,
-	requireAdmin,
-	quoteControllers.soApproval
-);
 
 module.exports = router;

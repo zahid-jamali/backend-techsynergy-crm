@@ -6,6 +6,8 @@ const mongoose = require('mongoose');
 const convertCurrency = require('../lib/convertCurrency.js');
 const User = require('../models/Users');
 const SalesTarget = require('../models/SalesTarget');
+const Order = require('../models/Order');
+
 const axios = require('axios');
 
 const getSingleUserPerformance = async (req, res) => {
@@ -15,7 +17,7 @@ const getSingleUserPerformance = async (req, res) => {
 		/* ================= USER INFO ================= */
 
 		const user = await User.findById(userId).select(
-			'_id name email phone role isActive createdAt'
+			'_id name email phone totalSell role isActive createdAt'
 		);
 
 		if (!user) {
@@ -34,27 +36,19 @@ const getSingleUserPerformance = async (req, res) => {
 			.populate('deal')
 			.populate('quoteOwner', 'name');
 
-		// If you have SellOrder model
-		// const sellOrders = await SellOrder.find({ owner: userId })
-		// 	.populate('account', 'accountName')
-		// 	.populate('contact', 'firstName lastName');
-
-		const sellOrders = await Quote.find({
-			quoteOwner: userId,
-			stage: 'Confirmed',
+		const sellOrders = await Order.find({
+			createdBy: userId,
+			isActive: true,
 		})
-			.populate('account', 'accountName')
-			.populate('contact', 'firstName lastName');
+			.populate('finalQuote')
+			.populate('createdBy');
 		/* ================= DEAL CALCULATIONS ================= */
 
 		const totalDeals = deals.length;
 
 		const closedWonDeals = deals.filter((d) => d.stage === 'Closed Won');
 
-		const totalRevenue = closedWonDeals.reduce(
-			(sum, deal) => sum + (deal.amount || 0),
-			0
-		);
+		const totalRevenue = user.totalSell;
 
 		const winRate =
 			totalDeals > 0
@@ -68,7 +62,12 @@ const getSingleUserPerformance = async (req, res) => {
 		/* ================= ACTIVE FILTERS FOR TABLES ================= */
 
 		const activeDeals = deals.filter(
-			(d) => !['Closed Won', 'Closed Lost'].includes(d.stage)
+			(d) =>
+				![
+					'Closed Won',
+					'Closed Lost',
+					'Closed Lost to Competition',
+				].includes(d.stage)
 		);
 
 		const activeQuotes = quotes.filter(
