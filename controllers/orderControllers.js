@@ -497,45 +497,80 @@ const getAllOrders = async (req, res) => {
 };
 
 const soApproval = async (req, res) => {
-	const { orderId } = req.params;
-	const { status } = req.body;
 	try {
+		const { orderId } = req.params;
+		const { status } = req.body;
+
 		const order = await Order.findById(orderId).populate('finalQuote');
 
 		if (!order) {
-			return res.status(404).send({ msg: 'Order not found' });
+			return res.status(404).json({
+				msg: 'Order not found',
+			});
+		}
+
+		if (order.isSOApproved) {
+			return res.status(400).json({
+				msg: 'Order already processed',
+			});
 		}
 
 		order.isSOApproved = true;
 		order.status = status;
+
 		await order.save();
 
 		const deal = await Deals.findById(order.finalQuote.deal);
 
-		if (status === 'Accepted') {
-			deal.stage = 'Closed Won';
-		} else {
-			deal.stage = 'Closed Lost';
-		}
+		if (deal) {
+			if (status === 'Accepted') {
+				deal.amount = order.grandTotal;
 
-		await deal.save();
+				deal.currency = order.currency;
+
+				deal.probability = 100;
+
+				deal.closingDate = new Date();
+
+				deal.stage = 'Closed Won';
+			} else {
+				deal.stage = 'Closed Lost';
+			}
+
+			await deal.save();
+		}
 
 		const owner = await User.findById(order.createdBy);
-		let totalInPKR;
-		if (order.currency === 'USD') {
-			totalInPKR = convertCurrency(order.subtotal, 'USD', 'PKR');
-			owner.totalSell = (owner.totalSell || 0) + totalInPKR;
-		} else {
-			owner.totalSell = (owner.totalSell || 0) + order.subtotal;
+
+		if (owner && status === 'Accepted') {
+			let amountToAdd = order.subtotal || 0;
+
+			if (order.currency === 'USD') {
+				const totalInPKR = await convertCurrency(
+					amountToAdd,
+					'USD',
+					'PKR'
+				);
+
+				amountToAdd = totalInPKR;
+			}
+
+			owner.totalSell = (owner.totalSell || 0) + amountToAdd;
+
+			await owner.save();
 		}
 
-		owner.totalSell = (owner.totalSell || 0) + order.subtotal;
-		await owner.save();
-
-		return res.status(200).send(order);
+		return res.status(200).json({
+			success: true,
+			message: `Order ${status}`,
+			data: order,
+		});
 	} catch (error) {
-		console.error(error);
-		return res.status(500).send({ msg: 'Internal Server error!!!' });
+		console.error('SO Approval Error:', error);
+
+		return res.status(500).json({
+			msg: 'Internal Server error',
+		});
 	}
 };
 

@@ -728,7 +728,8 @@ const getDashboardData = async (req, res) => {
 			closedLostDeals,
 			totalQuotes,
 			confirmedQuotes,
-			approvedQuotes,
+			totalSellOrders,
+			approvedSellOrders,
 		] = await Promise.all([
 			Contact.countDocuments({ contactOwner: userId, isActive: true }),
 
@@ -764,9 +765,13 @@ const getDashboardData = async (req, res) => {
 				quoteStage: 'Confirmed',
 			}),
 
-			Quote.countDocuments({
-				quoteOwner: userId,
+			Order.countDocuments({ createdBy: userId, isActive: true }),
+
+			Order.countDocuments({
+				createdBy: userId,
+				isActive: true,
 				isSOApproved: true,
+				status: 'Accepted',
 			}),
 		]);
 
@@ -790,7 +795,12 @@ const getDashboardData = async (req, res) => {
 		const deals = await Deal.find({ dealOwner: userId });
 
 		const dealValues = await Promise.all(
-			deals.map((d) => convertToPKR(d.amount, d.currency))
+			deals.map((d) =>
+				d.stage !== 'Closed Lost' &&
+				d.stage !== 'Closed Lost to Competition'
+					? convertToPKR(d.amount, d.currency)
+					: 0
+			)
 		);
 
 		const totalDealValue = dealValues.reduce(
@@ -803,9 +813,10 @@ const getDashboardData = async (req, res) => {
 			0
 		);
 
-		const approvedSales = await Quote.find({
-			quoteOwner: userId,
+		const approvedSales = await Order.find({
+			createdBy: userId,
 			isSOApproved: true,
+			status: 'Accepted',
 			createdAt: { $gte: start, $lte: end },
 		});
 
@@ -821,14 +832,6 @@ const getDashboardData = async (req, res) => {
 		const avgDealSize =
 			closedWonDeals > 0 ? totalDealValue / closedWonDeals : 0;
 
-		const winRate =
-			totalDeals > 0 ? ((closedWonDeals / totalDeals) * 100).toFixed(2) : 0;
-
-		const conversionRate =
-			totalQuotes > 0
-				? ((approvedQuotes / totalQuotes) * 100).toFixed(2)
-				: 0;
-
 		const summaryStats = {
 			contacts,
 			accounts,
@@ -838,22 +841,20 @@ const getDashboardData = async (req, res) => {
 			closedLostDeals,
 			totalQuotes,
 			confirmedQuotes,
-			approvedQuotes,
 			totalSell,
-			weightedExpectedRevenue,
 			avgDealSize: Math.round(avgDealSize),
-			winRate,
-			conversionRate,
+			approvedSellOrders,
+			totalSellOrders,
 		};
 
 		/* ===============================
 		   MONTHLY REVENUE (ONLY UNTIL CURRENT MONTH)
 		================================= */
 
-		const monthlyRevenueAgg = await Quote.aggregate([
+		const monthlyRevenueAgg = await Order.aggregate([
 			{
 				$match: {
-					quoteOwner: userId,
+					createdBy: userId,
 					isSOApproved: true,
 					createdAt: { $gte: start, $lte: end },
 				},
@@ -914,8 +915,8 @@ const getDashboardData = async (req, res) => {
 				$group: {
 					_id: '$stage',
 					count: { $sum: 1 },
-					totalValue: { $sum: '$amount' }, // 🔥 extra useful data
-					weightedRevenue: { $sum: '$expectedRevenue' }, // 🔥 powerful metric
+					totalValue: { $sum: '$amount' },
+					weightedRevenue: { $sum: '$amount' },
 				},
 			},
 			{
