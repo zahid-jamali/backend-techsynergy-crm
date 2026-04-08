@@ -442,43 +442,43 @@ const updateQuoteStage = async (req, res) => {
 		}
 
 		const usr = await User.findById(req.user.id);
-		if (quoteStage === 'Confirmed') {
-			if (!req.file) {
-				return res.status(400).json({
-					success: false,
-					msg: 'Purchase Order is required to confirm quote',
-				});
-			}
+		// if (quoteStage === 'Confirmed') {
+		// 	if (!req.file) {
+		// 		return res.status(400).json({
+		// 			success: false,
+		// 			msg: 'Purchase Order is required to confirm quote',
+		// 		});
+		// 	}
 
-			quote.purchaseOrder = {
-				public_id: req.file.filename,
-				url: `${req.file.path}`, //req.file.path,
-			};
+		// 	quote.purchaseOrder = {
+		// 		public_id: req.file.filename,
+		// 		url: `${req.file.path}`, //req.file.path,
+		// 	};
 
-			quote.confirmedDate = new Date();
+		// 	quote.confirmedDate = new Date();
 
-			if (usr.isSuperUser) {
-				quote.isSOApproved = true;
-				const owner = quote.quoteOwner;
+		// 	if (usr.isSuperUser) {
+		// 		quote.isSOApproved = true;
+		// 		const owner = quote.quoteOwner;
 
-				if (quote.currency === 'USD') {
-					totalInPKR = convertCurrency(quote.subTotal, 'USD', 'PKR');
-					owner.totalSell = (owner.totalSell || 0) + totalInPKR;
-				} else {
-					owner.totalSell = (owner.totalSell || 0) + quote.subTotal;
-				}
+		// 		if (quote.currency === 'USD') {
+		// 			totalInPKR = convertCurrency(quote.subTotal, 'USD', 'PKR');
+		// 			owner.totalSell = (owner.totalSell || 0) + totalInPKR;
+		// 		} else {
+		// 			owner.totalSell = (owner.totalSell || 0) + quote.subTotal;
+		// 		}
 
-				owner.totalSell = (owner.totalSell || 0) + quote.subTotal;
-				await owner.save();
-			}
-		} else {
-			if (req.file) {
-				return res.status(400).json({
-					success: false,
-					msg: 'Purchase Order can only be uploaded when confirming the quote',
-				});
-			}
-		}
+		// 		owner.totalSell = (owner.totalSell || 0) + quote.subTotal;
+		// 		await owner.save();
+		// 	}
+		// } else {
+		// 	if (req.file) {
+		// 		return res.status(400).json({
+		// 			success: false,
+		// 			msg: 'Purchase Order can only be uploaded when confirming the quote',
+		// 		});
+		// 	}
+		// }
 
 		if (quoteStage === 'Submit') {
 			const deal = await Deals.findById(quote.deal);
