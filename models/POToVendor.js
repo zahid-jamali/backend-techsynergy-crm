@@ -54,6 +54,10 @@ const schema = new Schema(
 			type: mongoose.Schema.ObjectId,
 			ref: 'Quote',
 		},
+		Order:{
+			type:mongoose.Schema.ObjectId,
+			ref:"Order"
+		},
 		vendor: {
 			type: mongoose.Schema.ObjectId,
 			ref: 'Vendor',
@@ -71,20 +75,10 @@ const schema = new Schema(
 			default: [],
 		},
 
-		isGstApplied: {
-			type: Boolean,
-			default: false,
-		},
-
-		gstRate: {
-			type: Number,
-			default: 18,
-		},
-
-		gstAmount: {
-			type: Number,
-			default: 0,
-		},
+		Tax:[{
+			tax: String,
+			percent: Number,
+		}],
 
 		subTotal: {
 			type: Number,

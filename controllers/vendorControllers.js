@@ -2,18 +2,30 @@ const Vendor = require('../models/Vendors');
 
 const createVendor = async (req, res) => {
 	try {
-		const { name } = req.body;
+		let {
+			name,
+			code,
+			contacts = [],
+			addresses = [],
+			bankDetails = {},
+			notes,
+		} = req.body;
 
-		if (!name) {
+		/* ================= VALIDATION ================= */
+
+		if (!name || !name.trim()) {
 			return res.status(400).json({
 				success: false,
 				msg: 'Vendor name is required',
 			});
 		}
 
-		// Prevent duplicate vendor names
+		name = name.trim();
+
+		/* ================= DUPLICATE CHECK ================= */
+
 		const exists = await Vendor.findOne({
-			name: name.trim(),
+			name: new RegExp(`^${name}$`, 'i'), // case-insensitive
 		});
 
 		if (exists) {
@@ -23,9 +35,77 @@ const createVendor = async (req, res) => {
 			});
 		}
 
+		/* ================= CONTACTS NORMALIZATION ================= */
+
+		if (Array.isArray(contacts)) {
+			let primaryFound = false;
+
+			contacts = contacts.map((c) => {
+				const contact = {
+					name: c.name?.trim(),
+					email: c.email?.trim(),
+					phone: c.phone?.trim(),
+					designation: c.designation?.trim(),
+					isPrimary: Boolean(c.isPrimary),
+				};
+
+				if (contact.isPrimary) {
+					if (primaryFound) {
+						contact.isPrimary = false; // allow only one primary
+					}
+					primaryFound = true;
+				}
+
+				return contact;
+			});
+
+			// If none marked primary, set first as primary
+			if (!primaryFound && contacts.length > 0) {
+				contacts[0].isPrimary = true;
+			}
+		}
+
+		/* ================= ADDRESSES NORMALIZATION ================= */
+
+		if (Array.isArray(addresses)) {
+			addresses = addresses.map((a) => ({
+				type: a.type || 'Office',
+				addressLine1: a.addressLine1?.trim(),
+				addressLine2: a.addressLine2?.trim(),
+				city: a.city?.trim(),
+				state: a.state?.trim(),
+				country: a.country?.trim(),
+				postalCode: a.postalCode?.trim(),
+			}));
+		}
+
+		/* ================= BANK DETAILS NORMALIZATION ================= */
+
+		if (bankDetails) {
+			bankDetails = {
+				accountTitle: bankDetails.accountTitle?.trim(),
+				accountNumber: bankDetails.accountNumber?.trim(),
+				bankName: bankDetails.bankName?.trim(),
+				iban: bankDetails.iban?.trim(),
+				branch: bankDetails.branch?.trim(),
+			};
+		}
+
+		/* ================= CODE GENERATION (OPTIONAL) ================= */
+
+		if (code) {
+			code = code.trim().toUpperCase();
+		}
+
+		/* ================= CREATE ================= */
+
 		const vendor = await Vendor.create({
-			...req.body,
-			name: name.trim(),
+			name,
+			code,
+			contacts,
+			addresses,
+			bankDetails,
+			notes,
 			createdBy: req.user?.id,
 		});
 
@@ -35,12 +115,22 @@ const createVendor = async (req, res) => {
 		});
 	} catch (error) {
 		console.error('Create Vendor Error:', error);
+
+		/* Handle duplicate code error */
+		if (error.code === 11000) {
+			return res.status(400).json({
+				success: false,
+				msg: 'Vendor code already exists',
+			});
+		}
+
 		return res.status(500).json({
 			success: false,
 			msg: 'Failed to create vendor',
 		});
 	}
 };
+
 
 const getVendors = async (req, res) => {
 	try {

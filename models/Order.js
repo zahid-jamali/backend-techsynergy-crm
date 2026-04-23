@@ -67,6 +67,10 @@ const OrderSchema = new Schema(
 			type: Date,
 		},
 
+		invoiceTermsAndConditions:[{
+			type:String,
+		}],
+
 		Tax: [
 			{
 				tax: {

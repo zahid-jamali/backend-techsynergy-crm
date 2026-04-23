@@ -2,12 +2,32 @@ const POToVendor = require('../models/POToVendor');
 const puppeteer = require('puppeteer');
 const getPOToVendorHtml = require('../lib/getPOToVendorHtml');
 const Product = require('../models/Products');
+const Vendor=require('../models/Vendors')
 
 const generatePOToVendorPdf = async (req, res) => {
 	try {
 		const po = await POToVendor.findById(req.params.id)
-			.populate('vendor')
-			.populate('refQuote');
+  .sort({ createdAt: -1 })
+  .populate({
+    path: "refQuote",
+    populate: [ 
+      {
+        path: "deal",
+        select: "dealName",
+      },
+      {
+        path: "quoteOwner",
+      },
+      {
+        path: "account",
+        select: "accountName",
+      },
+      {
+        path: "contact",
+        select: "name email phone",
+      },
+    ],
+  }).populate('vendor');
 
 		if (!po) {
 			return res.status(404).send('Purchase Order not found');
@@ -76,24 +96,34 @@ const updateMyProductPrices = async (products = []) => {
 	);
 };
 
+
 const createPOToVendor = async (req, res) => {
 	try {
 		const {
 			subject,
 			refQuote,
+			Order,
 			validUntil,
-			termsAndConditions,
-			products,
+			termsAndConditions = [],
+			products = [],
 			vendor,
-			isGstApplied,
-			gstRate,
+			Tax = [],
 			description,
 		} = req.body;
 
-		if (!subject) {
+		/* ================= VALIDATION ================= */
+
+		if (!subject || !subject.trim()) {
 			return res.status(400).json({
 				success: false,
 				msg: 'Subject is required',
+			});
+		}
+
+		if (!vendor) {
+			return res.status(400).json({
+				success: false,
+				msg: 'Vendor is required',
 			});
 		}
 
@@ -104,7 +134,20 @@ const createPOToVendor = async (req, res) => {
 			});
 		}
 
+		/* Validate vendor exists */
+
+		const vendorExists = await Vendor.findById(vendor);
+
+		if (!vendorExists) {
+			return res.status(404).json({
+				success: false,
+				msg: 'Vendor not found',
+			});
+		}
+
 		const round = (n) => Math.round(n * 100) / 100;
+
+		/* ================= PRODUCTS CALCULATION ================= */
 
 		let subTotal = 0;
 
@@ -118,7 +161,7 @@ const createPOToVendor = async (req, res) => {
 
 			return {
 				serialNo: index + 1,
-				productName: p.productName,
+				productName: p.productName?.trim(),
 				quantity,
 				listPrice,
 				amount: round(amount),
@@ -128,37 +171,79 @@ const createPOToVendor = async (req, res) => {
 
 		subTotal = round(subTotal);
 
-		const gstPercent = Number(gstRate) || 18;
-		let gstAmount = 0;
+		/* ================= TAX CALCULATION ================= */
 
-		if (isGstApplied) {
-			gstAmount = round((subTotal * gstPercent) / 100);
-		}
+		let totalTaxAmount = 0;
 
-		const grandTotal = round(subTotal + gstAmount);
+		const calculatedTaxes = Array.isArray(Tax)
+			? Tax.map((t) => {
+					const percent = Number(t.percent) || 0;
 
-		/* ---------- Generate PO Number ---------- */
+					const taxAmount = round(
+						(subTotal * percent) / 100
+					);
+
+					totalTaxAmount += taxAmount;
+
+					return {
+						tax: t.tax?.trim(),
+						percent,
+					};
+			  })
+			: [];
+
+		totalTaxAmount = round(totalTaxAmount);
+
+		/* ================= GRAND TOTAL ================= */
+
+		const grandTotal = round(
+			subTotal + totalTaxAmount
+		);
+
+		/* ================= GENERATE PO NUMBER ================= */
+
 		const count = await POToVendor.countDocuments();
-		const poToNumber = `PO-V-${String(count + 1).padStart(5, '0')}`;
 
-		/* ---------- Create PO ---------- */
+		const poToNumber =
+			`PO-V-${String(count + 1).padStart(5, '0')}`;
+
+		/* ================= CREATE PO ================= */
+
 		const po = await POToVendor.create({
 			poToNumber,
-			subject,
+			subject: subject.trim(),
 			refQuote,
+			Order,
 			validUntil,
-			vendor,
+			 vendor,
 			termsAndConditions,
 			products: calculatedProducts,
-			isGstApplied: Boolean(isGstApplied),
-			gstRate: gstPercent,
-			gstAmount,
+			Tax: calculatedTaxes,
 			subTotal,
 			grandTotal,
 			description,
 		});
 
-		await updateMyProductPrices(products);
+		/* ================= OPTIONAL: UPDATE PRODUCT PRICES ================= */
+
+		if (typeof updateMyProductPrices === 'function') {
+			await updateMyProductPrices(products);
+		}
+
+		/* ================= OPTIONAL: UPDATE VENDOR STATS ================= */
+
+		await Vendor.findByIdAndUpdate(
+			vendor,
+			{
+				$inc: {
+					'stats.totalPurchase': grandTotal,
+					'stats.totalOrders': 1,
+				},
+				$set: {
+					'stats.lastOrderDate': new Date(),
+				},
+			}
+		);
 
 		return res.status(201).json({
 			success: true,
@@ -167,6 +252,14 @@ const createPOToVendor = async (req, res) => {
 		});
 	} catch (error) {
 		console.error('Create PO Error:', error);
+
+		if (error.code === 11000) {
+			return res.status(400).json({
+				success: false,
+				msg: 'PO number already exists',
+			});
+		}
+
 		return res.status(500).json({
 			success: false,
 			msg: 'Failed to create Purchase Order',
@@ -174,11 +267,33 @@ const createPOToVendor = async (req, res) => {
 	}
 };
 
+
+
 const getAllPOs = async (req, res) => {
 	try {
 		const pos = await POToVendor.find({ isActive: true })
-			.sort({ createdAt: -1 })
-			.populate('refQuote');
+  .sort({ createdAt: -1 })
+  .populate({
+    path: "refQuote",
+    select: "deal account contact quoteNumber quoteOwner",
+    populate: [
+      {
+        path: "deal",
+        select: "dealName",
+      },
+      {
+        path: "quoteOwner",
+      },
+      {
+        path: "account",
+        select: "accountName",
+      },
+      {
+        path: "contact",
+        select: "name email phone",
+      },
+    ],
+  }).populate('vendor');
 
 		return res.status(200).json({
 			success: true,
@@ -200,40 +315,44 @@ const updatePOToVendor = async (req, res) => {
 		const {
 			subject,
 			refQuote,
+			Order,
 			validUntil,
-			termsAndConditions,
-			products,
-			isGstApplied,
-			gstRate,
+			termsAndConditions = [],
+			products = [],
+			Tax = [],
 			description,
 		} = req.body;
+
+		/* ================= FIND PO ================= */
 
 		const po = await POToVendor.findById(id);
 
 		if (!po) {
 			return res.status(404).json({
 				success: false,
-				msg: 'Purchase Order not found',
+				msg: "Purchase Order not found",
 			});
 		}
 
-		/* ---------------- Validation ---------------- */
-		if (!subject) {
+		/* ================= VALIDATION ================= */
+
+		if (!subject || !subject.trim()) {
 			return res.status(400).json({
 				success: false,
-				msg: 'Subject is required',
+				msg: "Subject is required",
 			});
 		}
 
 		if (!Array.isArray(products) || products.length === 0) {
 			return res.status(400).json({
 				success: false,
-				msg: 'At least one product is required',
+				msg: "At least one product is required",
 			});
 		}
 
-		/* ---------------- Calculations (SAME AS CREATE) ---------------- */
 		const round = (n) => Math.round(n * 100) / 100;
+
+		/* ================= PRODUCTS CALCULATION ================= */
 
 		let subTotal = 0;
 
@@ -242,11 +361,12 @@ const updatePOToVendor = async (req, res) => {
 			const listPrice = Number(p.listPrice) || 0;
 
 			const amount = quantity * listPrice;
+
 			subTotal += amount;
 
 			return {
 				serialNo: index + 1,
-				productName: p.productName,
+				productName: p.productName?.trim(),
 				quantity,
 				listPrice,
 				amount: round(amount),
@@ -256,42 +376,67 @@ const updatePOToVendor = async (req, res) => {
 
 		subTotal = round(subTotal);
 
-		const gstPercent = Number(gstRate) || 18;
-		let gstAmount = 0;
+		/* ================= TAX CALCULATION ================= */
 
-		if (isGstApplied) {
-			gstAmount = round((subTotal * gstPercent) / 100);
-		}
+		let totalTaxAmount = 0;
 
-		const grandTotal = round(subTotal + gstAmount);
+		const calculatedTaxes = Array.isArray(Tax)
+			? Tax.map((t) => {
+					const percent = Number(t.percent) || 0;
 
-		/* ---------------- Update PO ---------------- */
-		po.subject = subject;
+					const taxAmount = round(
+						(subTotal * percent) / 100
+					);
+
+					totalTaxAmount += taxAmount;
+
+					return {
+						tax: t.tax?.trim(),
+						percent,
+					};
+			  })
+			: [];
+
+		totalTaxAmount = round(totalTaxAmount);
+
+		/* ================= GRAND TOTAL ================= */
+
+		const grandTotal = round(
+			subTotal + totalTaxAmount
+		);
+
+		/* ================= UPDATE PO ================= */
+
+		po.subject = subject.trim();
 		po.refQuote = refQuote;
+		po.Order = Order;
 		po.validUntil = validUntil;
 		po.termsAndConditions = termsAndConditions;
 		po.products = calculatedProducts;
-		po.isGstApplied = Boolean(isGstApplied);
-		po.gstRate = gstPercent;
-		po.gstAmount = gstAmount;
+		po.Tax = calculatedTaxes;
 		po.subTotal = subTotal;
 		po.grandTotal = grandTotal;
 		po.description = description;
 
 		await po.save();
 
-		await updateMyProductPrices(products);
+		/* ================= OPTIONAL: UPDATE PRODUCT PRICES ================= */
+
+		if (typeof updateMyProductPrices === "function") {
+			await updateMyProductPrices(products);
+		}
 
 		return res.status(200).json({
 			success: true,
-			msg: 'Purchase Order updated successfully',
+			msg: "Purchase Order updated successfully",
 			data: po,
 		});
 	} catch (error) {
-		console.error('Update PO Error:', error);
+		console.error("Update PO Error:", error);
+
 		return res.status(500).json({
 			success: false,
-			msg: 'Failed to update Purchase Order',
+			msg: "Failed to update Purchase Order",
 		});
 	}
 };
