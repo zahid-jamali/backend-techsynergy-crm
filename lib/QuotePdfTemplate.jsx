@@ -331,7 +331,8 @@ Dear ${capitalize(
 </p>
 
 <p>
-We are pleased to submit our formal quotation.
+We are pleased to submit our formal quotation as per your requirement. Please find the commercial details
+below:
 </p>
 
 <!-- ITEMS -->
