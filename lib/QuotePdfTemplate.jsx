@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 
 const logoBase64 = fs.readFileSync(
-  path.join(__dirname, "../assets/image.png"),
+  path.join(__dirname, "../assets/image.jpeg"),
   "base64"
 );
 
@@ -325,9 +325,11 @@ ${capitalize(
 </div>
 
 <p>
+<b>
 Dear ${capitalize(
   quote.contact?.firstName || "Sir/Madam"
 )},
+</b>
 </p>
 
 <p>
