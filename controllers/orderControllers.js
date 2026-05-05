@@ -8,31 +8,19 @@ const createOrderFromConfirmedQuote = async (req, res) => {
 	try {
 		const {
 			quoteId,
-			products: requestProducts,
-			Tax: requestTax = [],
+			products: orderProducts,
+			otherTax: requestTax = [],
 		} = req.body;
 
-		/*
-		==============================
-		HANDLE PURCHASE ORDER FILE
-		==============================
-		*/
 
 		let purchaseOrderData = null;
 
 		if (req.file) {
 			purchaseOrderData = {
 				public_id: req.file.filename,
-
 				url: `/uploads/${req.file.filename}`,
 			};
 		}
-
-		/*
-		==============================
-		VALIDATION
-		==============================
-		*/
 
 		if (!quoteId) {
 			return res.status(400).json({
@@ -57,19 +45,7 @@ const createOrderFromConfirmedQuote = async (req, res) => {
 			});
 		}
 
-		/*
-		==============================
-		PRODUCTS
-		==============================
-		*/
 
-		let orderProducts = [];
-
-		if (Array.isArray(requestProducts) && requestProducts.length > 0) {
-			orderProducts = requestProducts;
-		} else {
-			orderProducts = quote.products;
-		}
 
 		if (!orderProducts.length) {
 			return res.status(400).json({
@@ -79,26 +55,44 @@ const createOrderFromConfirmedQuote = async (req, res) => {
 		}
 
 		let subtotal = 0;
-
 		const preparedProducts = orderProducts.map((item) => {
-			const quantity = Math.max(1, Number(item.quantity) || 1);
+		  const quantity = Math.max(1, Number(item.quantity) || 1);
+		  const listPrice = Math.max(0, Number(item.listPrice) || 0);
 
-			const listPrice = Math.max(0, Number(item.listPrice) || 0);
+		  const amount = quantity * listPrice;
 
-			const amount = quantity * listPrice;
+		  /* ================= PRODUCT TAX ================= */
+		  
 
-			const total = amount;
+		  const productTaxes = Array.isArray(item.Tax)
+		    ? item.Tax
+		    : Array.isArray(item.tax)
+		    ? item.tax
+		    : [];
 
-			subtotal += total;
+		  let productTaxAmount = 0;
 
-			return {
-				productName: item.productName,
-				description: item.description || '',
-				quantity,
-				listPrice,
-				amount,
-				total,
-			};
+		  if (productTaxes.length > 0) {
+		    productTaxes.forEach((t) => {
+		      const percent = Math.max(0, Number(t.percent) || 0);
+		      productTaxAmount += (amount * percent) / 100;
+		    });
+		  }
+
+		  const total = amount + productTaxAmount;
+
+		  subtotal += total;
+
+		  return {
+		    productName: item.productName,
+		    description: item.description || '',
+		    quantity,
+		    listPrice,
+		    amount,
+		    Tax: productTaxes,
+		    taxAmount: productTaxAmount,
+		    total,
+		  };
 		});
 
 		/*
@@ -122,7 +116,7 @@ const createOrderFromConfirmedQuote = async (req, res) => {
 
 		/*
 		==============================
-		TAX CALCULATION
+		ORDER TAX CALCULATION
 		==============================
 		*/
 
@@ -140,22 +134,13 @@ const createOrderFromConfirmedQuote = async (req, res) => {
 				percent,
 			};
 		});
-		const grandTotal = subtotal + totalTaxAmount;
-		console.log(
-			`requestTax: ${JSON.stringify(requestTax)}, totalTaxAmount: ${totalTaxAmount}`
-		);
 
-		// OrderNumber
+		const grandTotal = subtotal + totalTaxAmount;
 
 		const seq = await getNextSequence('order');
-
 		const orderNumber = `TIPL-${String(seq).padStart(5, '0')}`;
 
-		/*
-		==============================
-		CREATE ORDER
-		==============================
-		*/
+		console.log(preparedProducts);
 
 		const order = await Order.create({
 			finalQuote: quote._id,
@@ -163,18 +148,15 @@ const createOrderFromConfirmedQuote = async (req, res) => {
 
 			products: preparedProducts,
 
-			Tax: validatedTax,
-			currency: quote.currency || 'PKR',
+			/* ✅ FIXED */
+			otherTax: validatedTax,
+			otherTaxAmount: totalTaxAmount,
 
-			/*
-			PURCHASE ORDER
-			*/
+			currency: quote.currency || 'PKR',
 
 			purchaseOrder: purchaseOrderData,
 
 			subtotal,
-
-			tax: totalTaxAmount,
 
 			grandTotal,
 

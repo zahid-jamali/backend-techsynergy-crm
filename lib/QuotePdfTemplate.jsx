@@ -260,9 +260,9 @@ QUOTATION
 
 <tr>
 <td>Date:</td>
-<td>${new Date(
-  quote.createdAt
-).toLocaleDateString()}</td>
+<td>
+  ${new Date().toLocaleDateString()} 
+</td>
 </tr>
 
 <tr>
@@ -349,7 +349,8 @@ below:
 <th>Description</th>
 <th style="width:15%">Unit Price</th>
 <th style="width:10%">Qty</th>
-<th style="width:15%">Line Total</th>
+<th style="width:10%">Tax</th>
+<th style="width:15%">Line Total (Inc. Tax)</th>
 </tr>
 
 </thead>
@@ -377,6 +378,18 @@ ${formatCurrency(p.listPrice)}
 
 <td class="text-right">
 ${p.quantity}
+</td>
+<td class="text-right">
+${
+  p.Tax?.length
+    ? p.Tax.map(
+        (t) =>
+          `<div style="font-size:10px;color:#555;">
+            ${t.tax} (${t.percent}%)
+          </div>`
+      ).join("")
+    : "-"
+}
 </td>
 
 <td class="text-right">

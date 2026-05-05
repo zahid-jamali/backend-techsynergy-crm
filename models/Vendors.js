@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const VendorSchema = new mongoose.Schema(
 	{
-		/* ================= BASIC INFO ================= */
+		
 		name: {
 			type: String,
 			required: true,
@@ -13,16 +13,11 @@ const VendorSchema = new mongoose.Schema(
 		code: {
 			type: String,
 			unique: true,
-			sparse: true, // optional but unique if present
+			sparse: true, 
 		},
 
-		status: {
-			type: String,
-			enum: ['Active', 'Inactive', 'Blacklisted'],
-			default: 'Active',
-		},
 
-		/* ================= CONTACT INFO ================= */
+
 		contacts: [
 			{
 				name: { type: String },
@@ -33,7 +28,6 @@ const VendorSchema = new mongoose.Schema(
 			},
 		],
 
-		/* ================= ADDRESSES ================= */
 		addresses: [
 			{
 				type: {
@@ -50,14 +44,7 @@ const VendorSchema = new mongoose.Schema(
 			},
 		],
 
-		/* ================= TAX & LEGAL ================= */
-		taxInfo: {
-			gstNumber: { type: String },
-			ntnNumber: { type: String },
-			isTaxRegistered: { type: Boolean, default: false },
-		},
 
-		/* ================= BANK DETAILS ================= */
 		bankDetails: {
 			accountTitle: { type: String },
 			accountNumber: { type: String },

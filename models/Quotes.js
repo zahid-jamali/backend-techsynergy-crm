@@ -28,10 +28,18 @@ const QuoteProductSchema = new Schema(
 			required: true,
 		},
 
+
+
+
 		amount: {
 			type: Number,
 			default: 0, // calculated in controller
 		},
+		Tax:[{
+			tax:String,
+			percent:Number
+		}],
+		taxAmount:Number,
 
 		discount: {
 			type: Number,

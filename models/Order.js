@@ -27,8 +27,13 @@ const ProductSchema = new Schema(
 
 		amount: {
 			type: Number,
-			default: 0,
+			default: 0, // calculated in controller
 		},
+		Tax:[{
+			tax:String,
+			percent:Number
+		}],
+		taxAmount:Number,
 
 		total: {
 			type: Number,
@@ -71,20 +76,25 @@ const OrderSchema = new Schema(
 			type:String,
 		}],
 
-		Tax: [
-			{
-				tax: {
-					type: String,
-					required: true,
-					trim: true,
-				},
-				percent: {
-					type: Number,
-					min: 0,
-					default: 0,
-				},
-			},
+		otherTax: [
+		  {
+		    tax: {
+		      type: String,
+		      required: true,
+		      trim: true,
+		    },
+		    percent: {
+		      type: Number,
+		      min: 0,
+		      default: 0,
+		    },
+		  },
 		],
+
+		otherTaxAmount: {
+		  type: Number,
+		  default: 0,
+		},
 
 		status: {
 			type: String,
@@ -103,7 +113,7 @@ const OrderSchema = new Schema(
 		},
 
 		subtotal: Number,
-		tax: Number,
+		
 		discount: Number,
 		grandTotal: Number,
 

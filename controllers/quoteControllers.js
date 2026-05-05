@@ -19,6 +19,9 @@ const generateQuotePdf = async (req, res) => {
 			return res.status(404).send('Quote not found');
 		}
 
+
+
+
 		const browser = await puppeteer.launch({
 			headless: 'new',
 			args: ['--no-sandbox', '--disable-setuid-sandbox'],
@@ -99,7 +102,19 @@ const createQuote = async (req, res) => {
 			const listPrice = Number(p.listPrice) || 0;
 
 			const amount = quantity * listPrice;
-			const total = amount;
+
+			let productTaxAmount = 0;
+
+			if (Array.isArray(p.Tax) && p.Tax.length > 0) {
+				p.Tax.forEach((t) => {
+					const percent = Number(t.percent) || 0;
+					productTaxAmount += (amount * percent) / 100;
+				});
+			}
+
+			productTaxAmount = round(productTaxAmount);
+
+			const total = amount + productTaxAmount;
 
 			subTotal += total;
 
@@ -110,6 +125,8 @@ const createQuote = async (req, res) => {
 				quantity,
 				listPrice,
 				amount: round(amount),
+				Tax: Array.isArray(p.Tax) ? p.Tax : [],
+				taxAmount: productTaxAmount,
 				total: round(total),
 			};
 		});
@@ -318,6 +335,7 @@ const updateQuote = async (req, res) => {
 			currency,
 			otherTax,
 		} = req.body;
+		console.log(JSON.stringify(products[0].Tax));
 
 		/* ================= BASIC FIELDS ================= */
 
@@ -350,12 +368,23 @@ const updateQuote = async (req, res) => {
 
 			quote.products = products.map((p, index) => {
 				const quantity = Number(p.quantity) || 1;
-
 				const listPrice = Number(p.listPrice) || 0;
 
 				const amount = quantity * listPrice;
 
-				const total = amount;
+				/* ===== ✅ PRODUCT TAX LOGIC ===== */
+				let productTaxAmount = 0;
+
+				if (Array.isArray(p.Tax) && p.Tax.length > 0) {
+					p.Tax.forEach((t) => {
+						const percent = Number(t.percent) || 0;
+						productTaxAmount += (amount * percent) / 100;
+					});
+				}
+
+				productTaxAmount = round(productTaxAmount);
+
+				const total = amount + productTaxAmount;
 
 				subTotal += total;
 
@@ -366,6 +395,11 @@ const updateQuote = async (req, res) => {
 					quantity,
 					listPrice,
 					amount: round(amount),
+
+					/* ===== ✅ STORE TAX ===== */
+					Tax: Array.isArray(p.Tax) ? p.Tax : [],
+					taxAmount: productTaxAmount,
+
 					total: round(total),
 				};
 			});
