@@ -6,11 +6,20 @@ const Deals = require('../models/Deals');
 
 const createOrderFromConfirmedQuote = async (req, res) => {
 	try {
-		const {
+		let {
 			quoteId,
 			products: orderProducts,
 			otherTax: requestTax = [],
 		} = req.body;
+
+		if (typeof orderProducts === 'string') {
+			try {
+				orderProducts = JSON.parse(orderProducts);
+			} catch (err) {
+				console.error('Products parse error:', err);
+				orderProducts = [];
+			}
+		}
 
 
 		let purchaseOrderData = null;
@@ -56,17 +65,7 @@ const createOrderFromConfirmedQuote = async (req, res) => {
 
 		let subtotal = 0;
 
-		if (typeof orderProducts === 'string') {
-			try {
-				orderProducts = JSON.parse(orderProducts);
-			} catch (err) {
-				orderProducts = [];
-			}
-		}
 
-		if (!Array.isArray(orderProducts)) {
-			orderProducts = [];
-		}
 
 		const preparedProducts = orderProducts.map((item) => {
 		  const quantity = Math.max(1, Number(item.quantity) || 1);
