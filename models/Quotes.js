@@ -180,10 +180,7 @@ const QuoteSchema = new Schema(
 			default: 0,
 		},
 
-		discountTotal: {
-			type: Number,
-			default: 0,
-		},
+
 
 		grandTotal: {
 			type: Number,

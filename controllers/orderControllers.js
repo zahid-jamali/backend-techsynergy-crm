@@ -55,6 +55,19 @@ const createOrderFromConfirmedQuote = async (req, res) => {
 		}
 
 		let subtotal = 0;
+
+		if (typeof orderProducts === 'string') {
+			try {
+				orderProducts = JSON.parse(orderProducts);
+			} catch (err) {
+				orderProducts = [];
+			}
+		}
+
+		if (!Array.isArray(orderProducts)) {
+			orderProducts = [];
+		}
+
 		const preparedProducts = orderProducts.map((item) => {
 		  const quantity = Math.max(1, Number(item.quantity) || 1);
 		  const listPrice = Math.max(0, Number(item.listPrice) || 0);

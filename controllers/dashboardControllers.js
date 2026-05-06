@@ -7,8 +7,283 @@ const convertCurrency = require('../lib/convertCurrency.js');
 const User = require('../models/Users');
 const SalesTarget = require('../models/SalesTarget');
 const Order = require('../models/Order');
+const ExcelJS = require('exceljs');
 
 const axios = require('axios');
+
+
+const getMegaExcel = async (req, res) => {
+    try {
+        const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
+            stream: res,
+            useStyles: true,
+            useSharedStrings: true,
+        });
+
+        const sheet = workbook.addWorksheet('CRM Report', {
+            properties: { tabColor: { argb: 'FF0000' } }, // red tab
+        });
+
+        // ✅ Columns
+		sheet.columns = [
+		    { header: 'Sr. No', key: 'sr', width: 8 },
+		    { header: 'Deal', key: 'deal', width: 28 },
+		    { header: 'Customer', key: 'customer', width: 28 },
+		    
+		    { header: 'Probability', key: 'probability', width: 18 },
+
+		    { header: 'Subtotal', key: 'dealAmount', width: 18 },
+			{ header: 'Tax Amount', key: 'taxAmount', width: 18 },
+			{ header: 'Grand Total', key: 'totalDeal', width: 20 },
+
+		    { header: 'Taxes %', key: 'taxSummary', width: 30 },
+		    { header: 'Products', key: 'productCount', width: 12 },
+
+		    { header: 'Stage', key: 'stage', width: 18 },
+		    { header: 'Next Step', key: 'nextStep', width: 18 },
+
+		    { header: 'POC', key: 'poc', width: 25 },
+		    { header: 'Designation', key: 'designation', width: 22 },
+		    { header: 'Cell', key: 'cell', width: 18 },
+		    { header: 'Email', key: 'email', width: 32 },
+		    { header: 'Owner', key: 'owner', width: 25 },
+		];
+
+        // ✅ HEADER DESIGN (Premium look)
+        const headerRow = sheet.getRow(1);
+
+        headerRow.eachCell((cell) => {
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FF1F2937' }, // dark gray (pro look)
+            };
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+            cell.border = {
+                top: { style: 'thin' },
+                left: { style: 'thin' },
+                bottom: { style: 'thin' },
+                right: { style: 'thin' },
+            };
+        });
+
+        headerRow.height = 22;
+
+        // ✅ Freeze header
+        sheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+        // ✅ Filter enable
+        sheet.autoFilter = {
+            from: 'A1',
+            to: 'I1',
+        };
+
+        let sr = 1;
+
+        const cursor = Account.aggregate([
+            { $match: { isActive: true } },
+
+            {
+                $lookup: {
+                    from: 'deals',
+                    localField: '_id',
+                    foreignField: 'account',
+                    as: 'deals',
+                },
+            },
+            { $unwind: { path: '$deals', preserveNullAndEmptyArrays: true } },
+
+            {
+                $lookup: {
+                    from: 'contacts',
+                    localField: 'deals.contact',
+                    foreignField: '_id',
+                    as: 'contact',
+                },
+            },
+            { $unwind: { path: '$contact', preserveNullAndEmptyArrays: true } },
+
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'deals.dealOwner',
+                    foreignField: '_id',
+                    as: 'owner',
+                },
+            },
+            { $unwind: { path: '$owner', preserveNullAndEmptyArrays: true } },
+
+
+			{
+			    $lookup: {
+			        from: 'quotes',
+			        let: { dealId: '$deals._id' },
+			        pipeline: [
+			            {
+			                $match: {
+			                    $expr: { $eq: ['$deal', '$$dealId'] },
+			                    $or: [{quoteStage: 'Delivered'}, {quoteStage: 'Confirmed'}],
+			                    isActive: true,
+			                },
+			            },
+			            { $sort: { createdAt: -1 } },
+			            { $limit: 1 },
+			        ],
+			        as: 'quote',
+			    },
+			},
+			{ $unwind: { path: '$quote', preserveNullAndEmptyArrays: true } },
+
+
+           {
+				    $project: {
+				        customer: '$accountName',
+				        deal: '$deals.dealName',
+				        stage: '$deals.stage',
+				        probability: '$deals.probability',
+				        probability: '$deals.probability',
+				        nextStep: '$deals.nextStep',
+
+				        // ✅ ADD THESE (THIS IS YOUR MAIN FIX)
+				        dealAmount: { $ifNull: ['$quote.subTotal', 0] },
+				        taxAmount: { $ifNull: ['$quote.otherTaxAmount', 0] },
+				        totalDeal: { $ifNull: ['$quote.grandTotal', 0] },
+
+				        productCount: {
+				            $size: { $ifNull: ['$quote.products', []] }
+				        },
+
+				        // ✅ FIX TAX FIELD NAME (IMPORTANT)
+				        taxSummary: {
+				            $reduce: {
+				                input: { $ifNull: ['$quote.otherTax', []] }, // ✅ NOT "taxes"
+				                initialValue: '',
+				                in: {
+				                    $concat: [
+				                        '$$value',
+				                        {
+				                            $cond: [
+				                                { $eq: ['$$value', ''] },
+				                                '',
+				                                ', '
+				                            ]
+				                        },
+				                        '$$this.tax',
+				                        ' ',
+				                        { $toString: '$$this.percent' },
+				                        '%'
+				                    ]
+				                }
+				            }
+				        },
+
+				        poc: {
+				            $trim: {
+				                input: {
+				                    $concat: [
+				                        { $ifNull: ['$contact.firstName', '' ] },
+				                        ' ',
+				                        { $ifNull: ['$contact.lastName', '' ] },
+				                    ],
+				                },
+				            },
+				        },
+
+				        designation: { $ifNull: ['$contact.designation', '' ] },
+				        cell: { $ifNull: ['$contact.phone', '' ] },
+				        email: { $ifNull: ['$contact.email', '' ] },
+
+				        owner: {
+				            $trim: {
+				                input: {
+				                    $concat: [
+				                        { $ifNull: ['$owner.name', '' ] },
+				                        ' ',
+				                    ],
+				                },
+				            },
+				        },
+				    }
+				}
+            
+        ])
+        .allowDiskUse(true)
+        .cursor();
+
+        // Headers for download
+        res.setHeader(
+            'Content-Type',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        );
+        res.setHeader(
+            'Content-Disposition',
+            'attachment; filename=crm-report.xlsx'
+        );
+
+        // ✅ Add rows (with styling)
+        for await (const doc of cursor) {
+			const row = sheet.addRow({
+			    sr: sr++,
+			    customer: doc.customer || '—',
+			    deal: doc.deal || '—',
+			    nextStep:doc.nextStep || '-',
+			    probability: doc.probability || "-",
+			    stage: doc.stage || '—',
+
+			    dealAmount: doc.dealAmount,
+			    taxAmount: doc.taxAmount,
+			    totalDeal: doc.totalDeal,
+
+			    taxSummary: doc.taxSummary || '—',
+			    productCount: doc.productCount || 0,
+
+			    poc: doc.poc || '—',
+			    designation: doc.designation || '—',
+			    cell: doc.cell || '—',
+			    email: doc.email || '—',
+			    owner: doc.owner || '—',
+			});
+
+            // ✅ Zebra striping
+            if (sr % 2 === 0) {
+                row.eachCell((cell) => {
+                    cell.fill = {
+                        type: 'pattern',
+                        pattern: 'solid',
+                        fgColor: { argb: 'FFF9FAFB' }, // light gray
+                    };
+                });
+            }
+
+            // ✅ Alignment + border
+            row.eachCell((cell, colNumber) => {
+                cell.alignment = {
+                    vertical: 'middle',
+                    horizontal: colNumber === 1 ? 'center' : 'left',
+                };
+
+                cell.border = {
+                    bottom: { style: 'thin' },
+                };
+            });
+
+            row.commit();
+        }
+
+        sheet.commit();
+        await workbook.commit();
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Excel generation failed' });
+    }
+};
+
+
+
+
+
 
 const getSingleUserPerformance = async (req, res) => {
 	try {
@@ -993,4 +1268,5 @@ module.exports = {
 	getDashboardData,
 	getAdminDashboard,
 	getSingleUserPerformance,
+	getMegaExcel,
 };

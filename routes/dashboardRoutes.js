@@ -26,4 +26,13 @@ router.get(
 	requireAdmin,
 	dashboardControllers.getSingleUserPerformance
 );
+
+router.get(
+	'/excel',
+		verifyJWT,
+	requireAdmin,
+	dashboardControllers.getMegaExcel
+);
+
+
 module.exports = router;
