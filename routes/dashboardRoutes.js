@@ -28,11 +28,36 @@ router.get(
 );
 
 router.get(
-	'/excel',
+	'/pipeline',
 		verifyJWT,
 	requireAdmin,
-	dashboardControllers.getMegaExcel
+	dashboardControllers.getPipelineExcel
 );
+
+router.get(
+	'/master',
+		verifyJWT,
+	requireAdmin,
+	dashboardControllers.getMasterExcel
+);
+
+
+router.get(
+	'/revenue',
+		verifyJWT,
+	requireAdmin,
+	dashboardControllers.getRevenueExcel
+);
+
+
+
+router.get(
+	'/user',
+		verifyJWT,
+	requireAdmin,
+	dashboardControllers.getUsersPerformanceExcel
+);
+
 
 
 module.exports = router;

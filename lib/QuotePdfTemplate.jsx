@@ -309,9 +309,9 @@ CUSTOMER
 </div>
 
 <b>
-${capitalize(
+${
   quote.account?.accountName || ""
-)}
+}
 </b>
 
 <p>
@@ -365,7 +365,7 @@ ${quote.products
 <td>${i + 1}</td>
 
 <td>
-${capitalize(p.productName)}
+${p.productName}
 </td>
 
 <td>
