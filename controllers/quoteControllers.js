@@ -519,8 +519,8 @@ const updateQuoteStage = async (req, res) => {
 			deal.amount = quote.grandTotal;
 			deal.currency = quote.currency;
 			deal.closingDate = quote.validUntil;
-			deal.dealStage: '',
-			deal.probability
+			deal.dealStage ='Proposal/Price Quote',
+			deal.probability=60;
 			console.log(deal);
 			await deal.save();
 		}
