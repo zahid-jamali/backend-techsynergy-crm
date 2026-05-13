@@ -34,9 +34,9 @@ const getQuoteHtml = (quote) => {
 <td>${t.tax.toUpperCase()} (${t.percent}%)</td>
 <td class="text-right">
 ${formatCurrency(
-  (quote.subTotal - quote.discountTotal) *
+  (quote.subTotal  *
     (Number(t.percent) / 100)
-)}
+))}
 </td>
 </tr>
 `
@@ -418,31 +418,9 @@ ${formatCurrency(quote.subTotal)}
 </td>
 </tr>
 
-${
-  quote.discountTotal
-    ? `
-<tr>
-<td>Discount</td>
-<td class="text-right">
-${formatCurrency(quote.discountTotal)}
-</td>
-</tr>
-`
-    : ""
-}
 
-${
-  quote.isGstApplied
-    ? `
-<tr>
-<td>GST (18%)</td>
-<td class="text-right">
-${formatCurrency(quote.gstAmount)}
-</td>
-</tr>
-`
-    : ""
-}
+
+
 
 ${otherTaxRows}
 
