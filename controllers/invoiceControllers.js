@@ -54,6 +54,8 @@ const generateInvoicePdf = async (req, res) => {
 
 		const page = await browser.newPage();
 
+		
+
 		/*
 		==============================
 		GENERATE HTML

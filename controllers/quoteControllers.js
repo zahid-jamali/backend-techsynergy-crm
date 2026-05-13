@@ -203,7 +203,7 @@ const createQuote = async (req, res) => {
 			otherTax: calculatedOtherTaxes,
 
 			subTotal,
-			taxAmount,
+			otherTaxAmount: taxAmount,
 			grandTotal,
 		});
 
@@ -441,7 +441,7 @@ const updateQuote = async (req, res) => {
 		const grandTotal = round(subTotal + taxAmount);
 
 		quote.subTotal = subTotal;
-		quote.taxAmount = taxAmount;
+		quote.otherTaxAmount = taxAmount;
 		quote.grandTotal = grandTotal;
 
 		await quote.save();
@@ -519,6 +519,8 @@ const updateQuoteStage = async (req, res) => {
 			deal.amount = quote.grandTotal;
 			deal.currency = quote.currency;
 			deal.closingDate = quote.validUntil;
+			deal.dealStage: '',
+			deal.probability
 			console.log(deal);
 			await deal.save();
 		}
