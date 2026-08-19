@@ -1,8 +1,27 @@
+const convertCurrency = require('../lib/convertCurrency.js');
 const Order = require('../models/Order');
 const Quote = require('../models/Quotes');
 const getNextSequence = require('../lib/getNextSequence.js');
 const User = require('../models/Users');
 const Deals = require('../models/Deals');
+const uploadedFile = require('../lib/uploadedFile');
+
+let fulfillmentSynced = false;
+const syncApprovedFulfillment = async () => {
+	if (fulfillmentSynced) return;
+	await Order.updateMany(
+		{
+			isSOApproved: true,
+			status: 'Accepted',
+			$or: [
+				{ fulfillmentStatus: { $exists: false } },
+				{ fulfillmentStatus: 'awaiting_approval' },
+			],
+		},
+		{ $set: { fulfillmentStatus: 'ready_for_operations' } }
+	);
+	fulfillmentSynced = true;
+};
 
 const createOrderFromConfirmedQuote = async (req, res) => {
 	try {
@@ -25,10 +44,7 @@ const createOrderFromConfirmedQuote = async (req, res) => {
 		let purchaseOrderData = null;
 
 		if (req.file) {
-			purchaseOrderData = {
-				public_id: req.file.filename,
-				url: `/uploads/${req.file.filename}`,
-			};
+			purchaseOrderData = uploadedFile(req.file);
 		}
 
 		if (!quoteId) {
@@ -175,6 +191,7 @@ const createOrderFromConfirmedQuote = async (req, res) => {
 			confirmedDate: new Date(),
 
 			isSOApproved: false,
+			fulfillmentStatus: 'awaiting_approval',
 
 			createdBy: req.user?.id,
 		});
@@ -381,7 +398,14 @@ const getMyOrders = async (req, res) => {
 
 const getAllOrders = async (req, res) => {
 	try {
-		const { page = 1, limit = 10, search = '', isSOApproved } = req.query;
+		await syncApprovedFulfillment();
+		const {
+			page = 1,
+			limit = 10,
+			search = '',
+			isSOApproved,
+			fulfillmentStatus,
+		} = req.query;
 
 		/*
 		==============================
@@ -390,7 +414,7 @@ const getAllOrders = async (req, res) => {
 		*/
 
 		const safePage = Math.max(1, Number(page));
-		const safeLimit = Math.min(50, Math.max(1, Number(limit)));
+		const safeLimit = Math.min(200, Math.max(1, Number(limit)));
 
 		const skip = (safePage - 1) * safeLimit;
 
@@ -406,6 +430,18 @@ const getAllOrders = async (req, res) => {
 
 		if (typeof isSOApproved !== 'undefined') {
 			filter.isSOApproved = isSOApproved === 'true';
+		}
+
+		if (fulfillmentStatus) {
+			const statuses = String(fulfillmentStatus)
+				.split(',')
+				.map((s) => s.trim())
+				.filter(Boolean);
+			if (statuses.length === 1) {
+				filter.fulfillmentStatus = statuses[0];
+			} else if (statuses.length > 1) {
+				filter.fulfillmentStatus = { $in: statuses };
+			}
 		}
 
 		/*
@@ -511,6 +547,9 @@ const soApproval = async (req, res) => {
 
 		order.isSOApproved = true;
 		order.status = status;
+		if (status === 'Accepted') {
+			order.fulfillmentStatus = 'ready_for_operations';
+		}
 
 		await order.save();
 

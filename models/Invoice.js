@@ -10,6 +10,18 @@ const InvoiceSchema = new Schema(
 			index: true,
 		},
 
+		order: {
+			type: Schema.Types.ObjectId,
+			ref: 'Order',
+			required: true,
+			index: true,
+		},
+
+		delivery: {
+			type: Schema.Types.ObjectId,
+			ref: 'Delivery',
+		},
+
 		documentDate: {
 			type: Date,
 			required: true,
@@ -26,10 +38,20 @@ const InvoiceSchema = new Schema(
 			trim: true,
 		},
 
-		sellOrder: {
-			type: Schema.Types.ObjectId,
-			ref: 'Quote',
-			required: true,
+		subtotal: {
+			type: Number,
+			default: 0,
+		},
+
+		grandTotal: {
+			type: Number,
+			default: 0,
+		},
+
+		currency: {
+			type: String,
+			enum: ['USD', 'PKR'],
+			default: 'PKR',
 		},
 
 		transportation: {
@@ -55,6 +77,17 @@ const InvoiceSchema = new Schema(
 			type: String,
 			enum: ['Draft', 'Issued', 'Cancelled'],
 			default: 'Draft',
+			index: true,
+		},
+
+		issuedAt: Date,
+		issuedBy: {
+			type: Schema.Types.ObjectId,
+			ref: 'User',
+		},
+		createdBy: {
+			type: Schema.Types.ObjectId,
+			ref: 'User',
 		},
 
 		isActive: {

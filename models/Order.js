@@ -112,6 +112,21 @@ const OrderSchema = new Schema(
 			default: false,
 		},
 
+		fulfillmentStatus: {
+			type: String,
+			enum: [
+				'awaiting_approval',
+				'ready_for_operations',
+				'po_created',
+				'in_delivery',
+				'delivered',
+				'forwarded_to_finance',
+				'invoiced',
+			],
+			default: 'awaiting_approval',
+			index: true,
+		},
+
 		subtotal: Number,
 		
 		discount: Number,

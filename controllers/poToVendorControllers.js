@@ -1,13 +1,11 @@
 const POToVendor = require('../models/POToVendor');
-const puppeteer = require('puppeteer');
-const getPOToVendorHtml = require('../lib/getPOToVendorHtml');
 const Product = require('../models/Products');
 const Vendor=require('../models/Vendors')
+const { sendPdf } = require('../lib/pdf/renderPdf');
 
 const generatePOToVendorPdf = async (req, res) => {
 	try {
 		const po = await POToVendor.findById(req.params.id)
-  .sort({ createdAt: -1 })
   .populate({
     path: "refQuote",
     populate: [ 
@@ -33,36 +31,12 @@ const generatePOToVendorPdf = async (req, res) => {
 			return res.status(404).send('Purchase Order not found');
 		}
 
-		const browser = await puppeteer.launch({
-			headless: 'new',
-			args: ['--no-sandbox', '--disable-setuid-sandbox'],
-		});
-
-		const page = await browser.newPage();
-
-		await page.setContent(getPOToVendorHtml(po), {
-			waitUntil: 'networkidle0',
-		});
-
-		const pdf = await page.pdf({
-			format: 'A4',
-			printBackground: true,
-			margin: {
-				top: '20mm',
-				bottom: '20mm',
-				left: '15mm',
-				right: '15mm',
-			},
-		});
-
-		await browser.close();
-
-		res.set({
-			'Content-Type': 'application/pdf',
-			'Content-Disposition': `attachment; filename=PO-${po.poToNumber}.pdf`,
-		});
-
-		res.send(pdf);
+		return sendPdf(
+			res,
+			'POToVendorDocument',
+			{ po },
+			`PO-${po.poToNumber}.pdf`
+		);
 	} catch (error) {
 		console.error('PO PDF Error:', error);
 		res.status(500).send('Failed to generate Purchase Order PDF');
@@ -244,6 +218,22 @@ const createPOToVendor = async (req, res) => {
 				},
 			}
 		);
+
+		const OrderModel = require('../models/Order');
+		if (Order) {
+			const sellOrder = await OrderModel.findById(Order);
+			const later = [
+				'in_delivery',
+				'delivered',
+				'forwarded_to_finance',
+				'invoiced',
+				'po_created',
+			];
+			if (sellOrder && !later.includes(sellOrder.fulfillmentStatus)) {
+				sellOrder.fulfillmentStatus = 'po_created';
+				await sellOrder.save();
+			}
+		}
 
 		return res.status(201).json({
 			success: true,

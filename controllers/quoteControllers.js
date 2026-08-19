@@ -1,12 +1,11 @@
 const mongoose = require('mongoose');
 const Quote = require('../models/Quotes');
-const puppeteer = require('puppeteer');
-const getQuoteHtml = require('../lib/QuotePdfTemplate.jsx');
 const getNextSequence = require('../lib/getNextSequence.js');
 const Product = require('../models/Products');
 const convertCurrency = require('../lib/convertCurrency');
 const Deals = require('../models/Deals');
 const User = require('../models/Users');
+const { sendPdf } = require('../lib/pdf/renderPdf');
 
 const generateQuotePdf = async (req, res) => {
 	try {
@@ -19,42 +18,13 @@ const generateQuotePdf = async (req, res) => {
 			return res.status(404).send('Quote not found');
 		}
 
-
-
-
-		const browser = await puppeteer.launch({
-			headless: 'new',
-			args: ['--no-sandbox', '--disable-setuid-sandbox'],
-		});
-
-		const page = await browser.newPage();
-
-		await page.setContent(getQuoteHtml(quote), {
-			waitUntil: 'networkidle0',
-		});
-
-		const pdf = await page.pdf({
-			format: 'A4',
-			printBackground: true,
-
-			displayHeaderFooter: false,
-
-			margin: {
-				top: '40px',
-				bottom: '120px',
-				left: '40px',
-				right: '40px',
-			},
-		});
-
-		await browser.close();
-
-		res.set({
-			'Content-Type': 'application/pdf',
-			'Content-Disposition': `attachment; filename=Q-${quote.subject}-${quote.account.accountName}.pdf`,
-		});
-
-		res.send(pdf);
+		const accountName = quote.account?.accountName || 'quote';
+		return sendPdf(
+			res,
+			'QuoteDocument',
+			{ quote },
+			`Q-${quote.subject}-${accountName}.pdf`
+		);
 	} catch (error) {
 		console.error('PDF Error:', error);
 		res.status(500).send('Failed to generate PDF');

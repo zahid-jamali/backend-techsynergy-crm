@@ -44,7 +44,7 @@ const updateUser = async (req, res) => {
 const updateUserByAdmin = async (req, res) => {
 	try {
 		const { id } = req.params;
-		const { isSuperUser, isActive } = req.body;
+		const { isSuperUser, isActive, role } = req.body;
 
 		if (req.user.id === id) {
 			return res.status(400).json({
@@ -62,6 +62,16 @@ const updateUserByAdmin = async (req, res) => {
 
 		if (isSuperUser !== undefined) user.isSuperUser = isSuperUser;
 		if (isActive !== undefined) user.isActive = isActive;
+		if (role !== undefined) {
+			const allowed = ['admin', 'staff', 'operations', 'finance'];
+			if (!allowed.includes(role)) {
+				return res.status(400).json({ msg: 'Invalid role' });
+			}
+			user.role = role;
+			user.isSuperUser = role === 'admin';
+		} else if (isSuperUser !== undefined) {
+			user.role = isSuperUser ? 'admin' : user.role === 'admin' ? 'staff' : user.role || 'staff';
+		}
 
 		await user.save();
 
@@ -124,10 +134,16 @@ const loginUser = async (req, res) => {
 				.json({ msg: 'Accout is inactive, contact to administration' });
 		}
 
+		if (!user.role) {
+			user.role = user.isSuperUser ? 'admin' : 'staff';
+			await user.save();
+		}
+
 		const token = jwt.sign(
 			{
 				id: user._id,
-				isSuperUser: user.isSuperUser,
+				isSuperUser: user.role === 'admin',
+				role: user.role,
 			},
 			process.env.JWT_SECRET,
 			{
@@ -153,11 +169,16 @@ const loginUser = async (req, res) => {
 
 const createUser = async (req, res) => {
 	try {
-		const { name, email, phone, password } = req.body;
+		const { name, email, phone, password, role = 'staff' } = req.body;
 		if (!name || !email || !phone || !password) {
 			return res.status(400).json({
 				msg: 'All fields are required',
 			});
+		}
+
+		const allowed = ['admin', 'staff', 'operations', 'finance'];
+		if (!allowed.includes(role)) {
+			return res.status(400).json({ msg: 'Invalid role' });
 		}
 		const existingUser = await Users.findOne({ email });
 
@@ -173,6 +194,8 @@ const createUser = async (req, res) => {
 			email,
 			phone,
 			password: hashedPassword,
+			role,
+			isSuperUser: role === 'admin',
 		});
 
 		const userResponse = user.toObject();

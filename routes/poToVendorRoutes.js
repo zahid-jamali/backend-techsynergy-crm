@@ -7,14 +7,14 @@ const {
 	deletePOToVendor,
 	generatePOToVendorPdf,
 } = require('../controllers/poToVendorControllers');
-const { verifyJWT, requireAdmin } = require('../lib/middleware.js');
+const { verifyJWT, requireAdmin, requireOperations } = require('../lib/middleware.js');
 
 const router = express.Router();
 
-router.post('/create', verifyJWT, requireAdmin, createPOToVendor);
-router.get('/get', verifyJWT, requireAdmin, getAllPOs);
-router.put('/update/:id', verifyJWT, requireAdmin, updatePOToVendor);
-router.delete('/delete/:id', verifyJWT, requireAdmin, deletePOToVendor);
+router.post('/create', verifyJWT, requireOperations, createPOToVendor);
+router.get('/get', verifyJWT, requireOperations, getAllPOs);
+router.put('/update/:id', verifyJWT, requireOperations, updatePOToVendor);
+router.delete('/delete/:id', verifyJWT, requireOperations, deletePOToVendor);
 router.get('/:id/pdf', generatePOToVendorPdf);
 
 module.exports = router;
