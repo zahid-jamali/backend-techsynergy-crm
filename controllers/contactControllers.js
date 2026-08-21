@@ -1,6 +1,15 @@
 const Contact = require('../models/Contacts.js');
+const Account = require('../models/Account');
 const mongoose = require('mongoose');
 const User = require('../models/Users');
+const {
+	parseListQuery,
+	archiveMatch,
+	regex,
+	sendPage,
+	paginate,
+} = require('../lib/listQuery');
+const { setArchived } = require('../lib/archiveRecord');
 
 const createContact = async (req, res) => {
 	try {
@@ -29,6 +38,20 @@ const createContact = async (req, res) => {
 				success: false,
 				msg: 'Invalid account ID',
 			});
+		}
+
+		if (account) {
+			const accountDoc = await Account.findOne({
+				_id: account,
+				isActive: true,
+				isArchived: { $ne: true },
+			});
+			if (!accountDoc) {
+				return res.status(404).json({
+					success: false,
+					msg: 'Account not found or archived',
+				});
+			}
 		}
 
 		if (email) {
@@ -76,12 +99,33 @@ const createContact = async (req, res) => {
 
 const getMyContacts = async (req, res) => {
 	try {
-		const contacts = await Contact.find({
+		const { page, limit, search, archived } = parseListQuery(req);
+		const filter = {
 			contactOwner: req.user.id,
 			isActive: true,
-		}).populate('account');
-
-		return res.status(200).json(contacts);
+			...archiveMatch(archived),
+		};
+		if (req.query.account) filter.account = req.query.account;
+		if (search) {
+			filter.$or = [
+				{ firstName: regex(search) },
+				{ lastName: regex(search) },
+				{ email: regex(search) },
+				{ phone: regex(search) },
+				{ mobile: regex(search) },
+				{ designation: regex(search) },
+			];
+		}
+		const result = await paginate(Contact, {
+			filter,
+			page,
+			limit,
+			populate: [
+				{ path: 'account', select: 'accountName' },
+				{ path: 'contactOwner', select: 'name email' },
+			],
+		});
+		return sendPage(res, result.data, result);
 	} catch (err) {
 		console.log(err);
 		return res.status(500).json({ msg: 'Internal server error!!!' });
@@ -223,23 +267,82 @@ const deleteContact = async (req, res) => {
 // =========================================================================================
 
 const getAllContacts = async (req, res) => {
-	const page = parseInt(req.query.page) || 1;
-	const limit = parseInt(req.query.limit) || 20;
-	const skip = (page - 1) * limit;
-
 	try {
-		const contacts = await Contact.find()
-			.populate('contactOwner')
-			.populate('account')
-			.sort({ createdAt: -1 })
-			.skip(skip)
-			.limit(limit);
-		const total = await Contact.countDocuments();
-		return res
-			.status(200)
-			.json({ contacts, hasMore: total > skip + limit, total, page });
+		const { page, limit, search, archived } = parseListQuery(req);
+		const filter = { isActive: true, ...archiveMatch(archived) };
+		if (req.query.account) filter.account = req.query.account;
+		if (req.query.owner) filter.contactOwner = req.query.owner;
+		if (search) {
+			filter.$or = [
+				{ firstName: regex(search) },
+				{ lastName: regex(search) },
+				{ email: regex(search) },
+				{ phone: regex(search) },
+				{ mobile: regex(search) },
+				{ designation: regex(search) },
+			];
+		}
+		const result = await paginate(Contact, {
+			filter,
+			page,
+			limit,
+			populate: [
+				{ path: 'contactOwner', select: 'name email' },
+				{ path: 'account', select: 'accountName' },
+			],
+		});
+		return sendPage(res, result.data, result);
 	} catch (err) {
 		console.log(err);
+		return res.status(500).json({ msg: 'Internal server error!!!' });
+	}
+};
+
+const lookupContacts = async (req, res) => {
+	try {
+		const search = String(req.query.search || '').trim();
+		const limit = Math.min(40, parseInt(req.query.limit, 10) || 20);
+		const filter = { isActive: true, isArchived: { $ne: true } };
+		if (req.query.account) filter.account = req.query.account;
+		if (search) {
+			filter.$or = [
+				{ firstName: regex(search) },
+				{ lastName: regex(search) },
+				{ email: regex(search) },
+				{ phone: regex(search) },
+			];
+		}
+		const data = await Contact.find(filter)
+			.populate('account', 'accountName')
+			.populate('contactOwner', 'name')
+			.sort({ firstName: 1, lastName: 1 })
+			.limit(limit);
+		return res.json({ success: true, data });
+	} catch (err) {
+		console.error(err);
+		return res.status(500).json({ msg: 'Internal server error!!!' });
+	}
+};
+
+const archiveContact = async (req, res) => {
+	try {
+		const archived = req.body.archived !== false;
+		const contact = await setArchived(Contact, {
+			id: req.params.id,
+			user: req.user,
+			ownerField: 'contactOwner',
+			archived,
+		});
+		if (!contact) {
+			return res.status(404).json({ success: false, msg: 'Contact not found' });
+		}
+		return res.json({
+			success: true,
+			msg: archived ? 'Contact archived' : 'Contact restored',
+			data: contact,
+		});
+	} catch (err) {
+		console.error(err);
 		return res.status(500).json({ msg: 'Internal server error!!!' });
 	}
 };
@@ -250,4 +353,6 @@ module.exports = {
 	getAllContacts,
 	updateContact,
 	deleteContact,
+	lookupContacts,
+	archiveContact,
 };

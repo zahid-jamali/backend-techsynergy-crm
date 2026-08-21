@@ -5,6 +5,7 @@ const { verifyJWT, requireAdmin } = require('../lib/middleware.js');
 const router = express.Router();
 
 router.post('/create', verifyJWT, dealControllers.createDeal);
+router.get('/lookup', verifyJWT, dealControllers.lookupDeals);
 router.get('/my', verifyJWT, dealControllers.getMyDeals);
 router.put('/stage/:id', verifyJWT, dealControllers.updateDealStage);
 router.put('/update/:id', verifyJWT, dealControllers.updateDeal);

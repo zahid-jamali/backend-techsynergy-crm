@@ -1,6 +1,7 @@
 const CalendarEvent = require('../models/CalendarEvent');
 const Todo = require('../models/Todo');
 const Notebook = require('../models/Notebook');
+const { notifyPublicNotebook } = require('../lib/notifications');
 
 const ownerId = (doc) => doc.createdBy?._id || doc.createdBy;
 const isOwner = (doc, userId) => String(ownerId(doc)) === String(userId);
@@ -196,6 +197,7 @@ const createNotebook = async (req, res) => {
 			createdBy: req.user.id,
 		});
 		const populated = await note.populate('createdBy', 'name email role');
+		await notifyPublicNotebook(populated, req.user);
 		return res.status(201).json({ success: true, data: populated, canEdit: true });
 	} catch (error) {
 		return res.status(500).json({ msg: 'Failed to create note' });
@@ -208,6 +210,7 @@ const updateNotebook = async (req, res) => {
 		if (!note || !isOwner(note, req.user.id)) {
 			return res.status(404).json({ msg: 'Note not found' });
 		}
+		const wasPublic = note.visibility === 'public';
 		const fields = ['title', 'content', 'visibility', 'pinned'];
 		fields.forEach((key) => {
 			if (req.body[key] !== undefined) note[key] = req.body[key];
@@ -215,6 +218,9 @@ const updateNotebook = async (req, res) => {
 		if (note.visibility !== 'public') note.visibility = 'private';
 		await note.save();
 		const populated = await note.populate('createdBy', 'name email role');
+		if (!wasPublic && populated.visibility === 'public') {
+			await notifyPublicNotebook(populated, req.user);
+		}
 		return res.json({ success: true, data: populated, canEdit: true });
 	} catch (error) {
 		return res.status(500).json({ msg: 'Failed to update note' });

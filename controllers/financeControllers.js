@@ -3,6 +3,10 @@ const Delivery = require('../models/Delivery');
 const Order = require('../models/Order');
 const getNextSequence = require('../lib/getNextSequence');
 const ExcelJS = require('exceljs');
+const {
+	safePostInvoiceIssued,
+	safeReverseInvoiceJournal,
+} = require('../lib/ledger/postingService');
 
 const populateInvoice = (query) =>
 	query
@@ -150,6 +154,11 @@ const issueInvoice = async (req, res) => {
 		});
 
 		const populated = await populateInvoice(Invoice.findById(invoice._id));
+		try {
+			await safePostInvoiceIssued(invoice._id, req.user.id);
+		} catch (postError) {
+			console.error('Non-blocking invoice journal hook failed:', postError);
+		}
 		return res.json({
 			success: true,
 			msg: 'Invoice issued',
@@ -167,6 +176,7 @@ const cancelInvoice = async (req, res) => {
 		if (!invoice || !invoice.isActive) {
 			return res.status(404).json({ msg: 'Invoice not found' });
 		}
+		const wasIssued = invoice.status === 'Issued';
 		invoice.status = 'Cancelled';
 		await invoice.save();
 
@@ -174,6 +184,11 @@ const cancelInvoice = async (req, res) => {
 			fulfillmentStatus: 'forwarded_to_finance',
 		});
 
+		try {
+			await safeReverseInvoiceJournal(invoice._id, req.user.id, wasIssued);
+		} catch (postError) {
+			console.error('Non-blocking invoice journal reverse hook failed:', postError);
+		}
 		return res.json({ success: true, msg: 'Invoice cancelled', data: invoice });
 	} catch (error) {
 		return res.status(500).json({ msg: 'Failed to cancel invoice' });

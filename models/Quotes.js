@@ -22,6 +22,31 @@ const QuoteProductSchema = new Schema(
 			default: 1,
 		},
 
+		vendorPrice: {
+			type: Number,
+			min: 0,
+			default: 0,
+		},
+		margin: {
+			type: Number,
+			min: 0,
+			default: 0,
+		},
+		withHolding: {
+			type: Number,
+			min: 0,
+			default: 5.5,
+		},
+		priceAfterMargin: {
+			type: Number,
+			min: 0,
+			default: 0,
+		},
+		withHoldingAmount: {
+			type: Number,
+			min: 0,
+			default: 0,
+		},
 		listPrice: {
 			type: Number,
 			min: 0,
@@ -196,6 +221,16 @@ const QuoteSchema = new Schema(
 			type: Boolean,
 			default: true,
 			index: true,
+		},
+		isArchived: {
+			type: Boolean,
+			default: false,
+			index: true,
+		},
+		archivedAt: Date,
+		archivedBy: {
+			type: Schema.Types.ObjectId,
+			ref: 'User',
 		},
 	},
 	{ timestamps: true }

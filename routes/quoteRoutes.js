@@ -7,8 +7,10 @@ const router = express.Router();
 
 router.post('/create', verifyJWT, quoteControllers.createQuote);
 router.get('/my', verifyJWT, quoteControllers.getMyQuotes);
+router.get('/:id/costing-sheet', verifyJWT, quoteControllers.generateCostingSheet);
 router.get('/:id/pdf', quoteControllers.generateQuotePdf);
 router.put('/update/:id', verifyJWT, quoteControllers.updateQuote);
+router.patch('/:id/archive', verifyJWT, quoteControllers.archiveQuote);
 router.put(
 	'/:id/updateStage',
 	verifyJWT,

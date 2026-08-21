@@ -4,8 +4,10 @@ const { verifyJWT, requireAdmin } = require('../lib/middleware.js');
 const router = express.Router();
 
 router.post('/create', verifyJWT, contactControllers.createContact);
+router.get('/lookup', verifyJWT, contactControllers.lookupContacts);
 router.get('/my', verifyJWT, contactControllers.getMyContacts);
 router.put('/update/:id', verifyJWT, contactControllers.updateContact);
+router.patch('/:id/archive', verifyJWT, contactControllers.archiveContact);
 router.delete('/delete/:id', verifyJWT, contactControllers.deleteContact);
 
 // Admin

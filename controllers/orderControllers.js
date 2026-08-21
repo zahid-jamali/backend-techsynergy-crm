@@ -5,6 +5,7 @@ const getNextSequence = require('../lib/getNextSequence.js');
 const User = require('../models/Users');
 const Deals = require('../models/Deals');
 const uploadedFile = require('../lib/uploadedFile');
+const { notifySellOrderCreated, notifySellOrderDecision } = require('../lib/notifications');
 
 let fulfillmentSynced = false;
 const syncApprovedFulfillment = async () => {
@@ -195,6 +196,8 @@ const createOrderFromConfirmedQuote = async (req, res) => {
 
 			createdBy: req.user?.id,
 		});
+
+		await notifySellOrderCreated(order, quote, req.user);
 
 		return res.status(201).json({
 			success: true,
@@ -592,6 +595,8 @@ const soApproval = async (req, res) => {
 
 			await owner.save();
 		}
+
+		await notifySellOrderDecision(order, owner, status);
 
 		return res.status(200).json({
 			success: true,

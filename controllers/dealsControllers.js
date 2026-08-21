@@ -1,6 +1,14 @@
 const mongoose = require('mongoose');
 const Deals = require('../models/Deals.js');
 const User = require('../models/Users');
+const Account = require('../models/Account');
+const Contact = require('../models/Contacts');
+const {
+	parseListQuery,
+	regex,
+	sendPage,
+	paginate,
+} = require('../lib/listQuery');
 
 const stageProbabilityMap = {
 	Qualification: 10,
@@ -29,6 +37,7 @@ const updateDeal = async (req, res) => {
 			closingDate,
 			description,
 			contact,
+			account,
 		} = req.body;
 
 		let usr = await User.findById(req.user.id);
@@ -42,6 +51,57 @@ const updateDeal = async (req, res) => {
 			return res
 				.status(404)
 				.json({ success: false, msg: 'Deal not found' });
+		}
+
+		if (account) {
+			if (!mongoose.Types.ObjectId.isValid(account)) {
+				return res.status(400).json({
+					success: false,
+					msg: 'Invalid account ID',
+				});
+			}
+			const accountDoc = await Account.findOne({
+				_id: account,
+				isActive: true,
+				isArchived: { $ne: true },
+			});
+			if (!accountDoc) {
+				return res.status(404).json({
+					success: false,
+					msg: 'Account not found or archived',
+				});
+			}
+			deal.account = account;
+		}
+
+		if (contact) {
+			if (!mongoose.Types.ObjectId.isValid(contact)) {
+				return res.status(400).json({
+					success: false,
+					msg: 'Invalid contact ID',
+				});
+			}
+			const contactDoc = await Contact.findOne({
+				_id: contact,
+				isActive: true,
+				isArchived: { $ne: true },
+			});
+			if (!contactDoc) {
+				return res.status(404).json({
+					success: false,
+					msg: 'Contact not found or archived',
+				});
+			}
+			const accountId = deal.account;
+			if (
+				contactDoc.account &&
+				String(contactDoc.account) !== String(accountId)
+			) {
+				return res.status(400).json({
+					success: false,
+					msg: 'Contact does not belong to the selected account',
+				});
+			}
 		}
 
 		/* ✅ Normalize */
@@ -145,6 +205,41 @@ const createDeal = async (req, res) => {
 			});
 		}
 
+		const accountDoc = await Account.findOne({
+			_id: account,
+			isActive: true,
+			isArchived: { $ne: true },
+		});
+		if (!accountDoc) {
+			return res.status(404).json({
+				success: false,
+				msg: 'Account not found or archived',
+			});
+		}
+
+		if (contact) {
+			const contactDoc = await Contact.findOne({
+				_id: contact,
+				isActive: true,
+				isArchived: { $ne: true },
+			});
+			if (!contactDoc) {
+				return res.status(404).json({
+					success: false,
+					msg: 'Contact not found or archived',
+				});
+			}
+			if (
+				contactDoc.account &&
+				String(contactDoc.account) !== String(account)
+			) {
+				return res.status(400).json({
+					success: false,
+					msg: 'Contact does not belong to the selected account',
+				});
+			}
+		}
+
 		const deal = await Deals.create({
 			dealOwner: req.user.id,
 			dealName: dealName.trim(),
@@ -179,37 +274,73 @@ const createDeal = async (req, res) => {
 
 const getMyDeals = async (req, res) => {
 	try {
-		const data = await Deals.find({ dealOwner: req.user.id }).populate(
-			'account contact'
-		);
-		res.status(200).send(data);
+		const { page, limit, search } = parseListQuery(req);
+		const filter = { dealOwner: req.user.id, isActive: { $ne: false } };
+		if (req.query.stage) filter.stage = req.query.stage;
+		if (req.query.currency) filter.currency = req.query.currency;
+		if (req.query.account) filter.account = req.query.account;
+		if (search) {
+			filter.$or = [{ dealName: regex(search) }, { nextStep: regex(search) }];
+		}
+		const result = await paginate(Deals, {
+			filter,
+			page,
+			limit,
+			populate: [
+				{ path: 'account', select: 'accountName' },
+				{ path: 'contact', select: 'firstName lastName email' },
+				{ path: 'dealOwner', select: 'name email' },
+			],
+		});
+		return sendPage(res, result.data, result);
 	} catch (err) {
 		console.error(err);
 		res.status(500).json({ msg: 'Internal server error!!!' });
 	}
 };
 
-// =======================================================================================
-// Admin Area
-// =========================================================================================
-
 const getAllDeals = async (req, res) => {
-	const page = parseInt(req.query.page) || 1;
-	const limit = parseInt(req.query.limit) || 20;
-	const skip = (page - 1) * limit;
 	try {
-		const data = await Deals.find()
-			.populate('account contact dealOwner')
-			.sort({ createdAt: -1 })
-			.skip(skip)
-			.limit(limit);
-		const total = await Deals.countDocuments();
-		res.status(200).send({
-			data,
+		const { page, limit, search } = parseListQuery(req);
+		const filter = { isActive: { $ne: false } };
+		if (req.query.stage) filter.stage = req.query.stage;
+		if (req.query.currency) filter.currency = req.query.currency;
+		if (req.query.owner) filter.dealOwner = req.query.owner;
+		if (req.query.account) filter.account = req.query.account;
+		if (search) {
+			filter.$or = [{ dealName: regex(search) }, { nextStep: regex(search) }];
+		}
+		const result = await paginate(Deals, {
+			filter,
 			page,
-			total,
-			hasMore: total > limit + skip,
+			limit,
+			populate: [
+				{ path: 'account', select: 'accountName' },
+				{ path: 'contact', select: 'firstName lastName email' },
+				{ path: 'dealOwner', select: 'name email' },
+			],
 		});
+		return sendPage(res, result.data, result);
+	} catch (err) {
+		console.error(err);
+		res.status(500).json({ msg: 'Internal server error!!!' });
+	}
+};
+
+const lookupDeals = async (req, res) => {
+	try {
+		const search = String(req.query.search || '').trim();
+		const limit = Math.min(40, parseInt(req.query.limit, 10) || 20);
+		const filter = { isActive: { $ne: false } };
+		if (req.query.account) filter.account = req.query.account;
+		if (search) filter.dealName = regex(search);
+		const data = await Deals.find(filter)
+			.populate('account', 'accountName')
+			.populate('contact', 'firstName lastName')
+			.populate('dealOwner', 'name')
+			.sort({ updatedAt: -1 })
+			.limit(limit);
+		return res.json({ success: true, data });
 	} catch (err) {
 		console.error(err);
 		res.status(500).json({ msg: 'Internal server error!!!' });
@@ -222,4 +353,5 @@ module.exports = {
 	updateDeal,
 	updateDealStage,
 	getAllDeals,
+	lookupDeals,
 };

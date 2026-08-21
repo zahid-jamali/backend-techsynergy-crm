@@ -36,6 +36,9 @@ const schema = mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    priceQueryLastReadAt: {
+      type: Date,
+    },
     password: {
       type: String,
       required: true,

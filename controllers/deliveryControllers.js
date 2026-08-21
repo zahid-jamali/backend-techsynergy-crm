@@ -2,6 +2,7 @@ const Delivery = require('../models/Delivery');
 const Order = require('../models/Order');
 const getNextSequence = require('../lib/getNextSequence');
 const fileFromMulter = require('../lib/uploadedFile');
+const { notifyDeliveryCompleted } = require('../lib/notifications');
 
 const populateDelivery = (query) =>
 	query
@@ -235,6 +236,7 @@ const markDelivered = async (req, res) => {
 		});
 
 		const populated = await populateDelivery(Delivery.findById(delivery._id));
+		await notifyDeliveryCompleted(populated, req.user);
 		return res.json({
 			success: true,
 			msg: 'Marked as delivered',

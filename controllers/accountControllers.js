@@ -1,5 +1,13 @@
 const Account = require('../models/Account.js');
 const User = require('../models/Users');
+const {
+  parseListQuery,
+  archiveMatch,
+  regex,
+  sendPage,
+  paginate,
+} = require('../lib/listQuery');
+const { setArchived } = require('../lib/archiveRecord');
 
 const createAccount = async (req, res) => {
   try {
@@ -72,12 +80,24 @@ const createAccount = async (req, res) => {
 
 const getMyAccounts = async (req, res) => {
   try {
-    const accounts = await Account.find({
+    const { page, limit, search, archived } = parseListQuery(req);
+    const filter = {
       accountOwner: req.user.id,
       isActive: true,
-    });
-
-    return res.status(200).json(accounts);
+      ...archiveMatch(archived),
+    };
+    if (req.query.accountType) filter.accountType = req.query.accountType;
+    if (req.query.industry) filter.industry = req.query.industry;
+    if (search) {
+      filter.$or = [
+        { accountName: regex(search) },
+        { phone: regex(search) },
+        { website: regex(search) },
+        { industry: regex(search) },
+      ];
+    }
+    const result = await paginate(Account, { filter, page, limit });
+    return sendPage(res, result.data, result);
   } catch (err) {
     console.log(err);
     return res.status(500).json({ msg: 'Internal server error!!!' });
@@ -221,62 +241,87 @@ const deleteMyAccount = async (req, res) => {
 
 const getAllAccounts = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-
-    const skip = (page - 1) * limit;
-    const accounts = await Account.aggregate([
-      // Join Account Owner
-      {
-        $lookup: {
-          from: 'users', // collection name of User model
-          localField: 'accountOwner',
-          foreignField: '_id',
-          as: 'accountOwner',
-        },
-      },
-      {
-        $unwind: {
-          path: '$accountOwner',
-          preserveNullAndEmptyArrays: true,
-        },
-      },
-
-      // Join Contacts
-      {
-        $lookup: {
-          from: 'contacts', // collection name of Contact model
-          localField: '_id',
-          foreignField: 'account',
-          as: 'contacts',
-        },
-      },
-      { $sort: { createdAt: -1 } },
-      {
-        $skip: skip,
-      },
-      {
-        $limit: limit,
-      },
-    ]);
-
-    let accountCount = await Account.countDocuments();
-
-    return res.status(200).json({
-      accounts,
+    const { page, limit, search, archived } = parseListQuery(req);
+    const filter = { isActive: true, ...archiveMatch(archived) };
+    if (req.query.accountType) filter.accountType = req.query.accountType;
+    if (req.query.industry) filter.industry = req.query.industry;
+    if (req.query.owner) filter.accountOwner = req.query.owner;
+    if (search) {
+      filter.$or = [
+        { accountName: regex(search) },
+        { phone: regex(search) },
+        { website: regex(search) },
+        { industry: regex(search) },
+      ];
+    }
+    const result = await paginate(Account, {
+      filter,
       page,
-      hasMore: accountCount > limit + skip ? true : false,
-      total: accountCount,
+      limit,
+      populate: [
+        { path: 'accountOwner', select: 'name email' },
+        {
+          path: 'contacts',
+          match: { isActive: true, isArchived: { $ne: true } },
+          select: 'firstName lastName email phone',
+        },
+      ],
     });
+    return sendPage(res, result.data, result);
   } catch (err) {
     console.log(err);
     return res.status(500).json({ msg: 'Internal server error!!!' });
   }
 };
+
+const lookupAccounts = async (req, res) => {
+  try {
+    const search = String(req.query.search || '').trim();
+    const limit = Math.min(40, parseInt(req.query.limit, 10) || 20);
+    const filter = { isActive: true, isArchived: { $ne: true } };
+    if (search) {
+      filter.$or = [{ accountName: regex(search) }, { phone: regex(search) }];
+    }
+    const data = await Account.find(filter)
+      .populate('accountOwner', 'name email')
+      .sort({ accountName: 1 })
+      .limit(limit);
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ msg: 'Internal server error!!!' });
+  }
+};
+
+const archiveAccount = async (req, res) => {
+  try {
+    const archived = req.body.archived !== false;
+    const account = await setArchived(Account, {
+      id: req.params.id,
+      user: req.user,
+      ownerField: 'accountOwner',
+      archived,
+    });
+    if (!account) {
+      return res.status(404).json({ success: false, msg: 'Account not found' });
+    }
+    return res.json({
+      success: true,
+      msg: archived ? 'Account archived' : 'Account restored',
+      data: account,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ msg: 'Internal server error!!!' });
+  }
+};
+
 module.exports = {
   createAccount,
   updateMyAccount,
   deleteMyAccount,
   getMyAccounts,
   getAllAccounts,
+  lookupAccounts,
+  archiveAccount,
 };

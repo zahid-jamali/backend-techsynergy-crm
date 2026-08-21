@@ -16,7 +16,9 @@ const dashboardRoutes = require("./routes/dashboardRoutes");
 const orderRoutes = require("./routes/orderRoutes");
 const deliveryRoutes = require("./routes/deliveryRoutes");
 const financeRoutes = require("./routes/financeRoutes");
+const ledgerRoutes = require("./routes/ledgerRoutes");
 const workspaceRoutes = require("./routes/workspaceRoutes");
+const priceQueryRoutes = require("./routes/priceQueryRoutes");
 
 const app = express();
 app.use(cors({ origin: "*" }));
@@ -38,7 +40,9 @@ app.use("/api/dashboard/", dashboardRoutes);
 app.use("/api/orders/", orderRoutes);
 app.use("/api/deliveries/", deliveryRoutes);
 app.use("/api/finance/", financeRoutes);
+app.use("/api/finance/", ledgerRoutes);
 app.use("/api/workspace/", workspaceRoutes);
+app.use("/api/price-queries/", priceQueryRoutes);
 
 // for static PO rendering
 // app.use('/uploads', express.static('uploads'));
@@ -49,8 +53,8 @@ app.get("/health", (req, res) => {
   });
 });
 
-// const port = process.env.PORT || 2222;
-// console.log(`Server is running on ${port}`);
-// app.listen(port);
+const port = process.env.PORT || 2222;
+console.log(`Server is running on ${port}`);
+app.listen(port);
 
-module.exports = app;
+// module.exports = app;

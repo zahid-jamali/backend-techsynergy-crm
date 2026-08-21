@@ -156,6 +156,17 @@ const AccountSchema = new Schema(
       default: true,
       index: true,
     },
+
+    isArchived: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    archivedAt: Date,
+    archivedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+    },
   },
   {
     timestamps: true,
@@ -163,6 +174,13 @@ const AccountSchema = new Schema(
 );
 
 AccountSchema.index({ accountName: 1, accountOwner: 1 });
+AccountSchema.virtual('contacts', {
+  ref: 'Contact',
+  localField: '_id',
+  foreignField: 'account',
+});
+AccountSchema.set('toJSON', { virtuals: true });
+AccountSchema.set('toObject', { virtuals: true });
 
 const Account = mongoose.model('Account', AccountSchema);
 

@@ -66,6 +66,16 @@ const ContactSchema = new Schema(
 			default: true,
 			index: true,
 		},
+		isArchived: {
+			type: Boolean,
+			default: false,
+			index: true,
+		},
+		archivedAt: Date,
+		archivedBy: {
+			type: Schema.Types.ObjectId,
+			ref: 'User',
+		},
 	},
 	{
 		timestamps: true,
