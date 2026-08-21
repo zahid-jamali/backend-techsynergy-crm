@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const PriceQueryMessage = require('../models/PriceQueryMessage');
 const User = require('../models/Users');
+const Account = require('../models/Account');
 const { resolveRole } = require('../lib/middleware');
 const { regex } = require('../lib/listQuery');
 const { notifyPriceQueryPosted } = require('../lib/notifications');
@@ -21,6 +22,16 @@ const mapAttachment = (file) => {
 };
 
 const populateSender = { path: 'sender', select: 'name email role designation' };
+const populateMessage = [
+	populateSender,
+	{ path: 'account', select: 'accountName' },
+	{
+		path: 'replyTo',
+		select: 'body sender senderRole createdAt threadOwner',
+		populate: { path: 'sender', select: 'name role' },
+	},
+	{ path: 'threadOwner', select: 'name email' },
+];
 
 const isOps = (role) => OPS_ROLES.includes(role);
 
@@ -205,7 +216,7 @@ const listMessages = async (req, res) => {
 		}
 
 		const rows = await PriceQueryMessage.find(filter)
-			.populate(populateSender)
+			.populate(populateMessage)
 			.sort({ _id: -1 })
 			.limit(limit + 1);
 
@@ -254,14 +265,38 @@ const createMessage = async (req, res) => {
 			});
 		}
 
+		const replyToId = toId(req.body.replyTo);
+		let parent = null;
+		if (replyToId) {
+			parent = await PriceQueryMessage.findOne({
+				_id: replyToId,
+				isActive: true,
+			});
+			if (!parent) {
+				return res.status(400).json({
+					success: false,
+					msg: 'The message you are replying to was not found',
+				});
+			}
+			if (!isOps(role)) {
+				const parentOwner = String(parent.threadOwner || parent.sender);
+				if (parentOwner !== String(req.user.id)) {
+					return res.status(403).json({
+						success: false,
+						msg: 'You can only reply inside your own query thread',
+					});
+				}
+			}
+		}
+
 		let threadOwner = toId(req.user.id);
 		if (isOps(role)) {
 			const requested = String(req.body.threadOwner || '').trim();
-			const ownerId = toId(requested);
+			const ownerId = toId(requested) || toId(parent?.threadOwner || parent?.sender);
 			if (!ownerId) {
 				return res.status(400).json({
 					success: false,
-					msg: 'Select a staff member to reply to',
+					msg: 'Select a staff member, or reply to a specific message',
 				});
 			}
 			const owner = await User.findById(ownerId).select('role isActive isSuperUser');
@@ -278,11 +313,34 @@ const createMessage = async (req, res) => {
 			threadOwner = owner._id;
 		}
 
+		let accountId = toId(req.body.account) || toId(parent?.account);
+		if (!isOps(role) && !accountId) {
+			return res.status(400).json({
+				success: false,
+				msg: 'Select an account before sending a price query',
+			});
+		}
+		if (accountId) {
+			const accountDoc = await Account.findOne({
+				_id: accountId,
+				isActive: true,
+				isArchived: { $ne: true },
+			}).select('_id');
+			if (!accountDoc) {
+				return res.status(400).json({
+					success: false,
+					msg: 'Account not found',
+				});
+			}
+		}
+
 		const message = await PriceQueryMessage.create({
 			body,
 			sender: req.user.id,
 			senderRole: role === 'staff' ? 'staff' : role,
 			threadOwner,
+			account: accountId || undefined,
+			replyTo: parent?._id,
 			attachments,
 		});
 
@@ -290,7 +348,9 @@ const createMessage = async (req, res) => {
 			priceQueryLastReadAt: new Date(),
 		});
 
-		const populated = await message.populate(populateSender);
+		const populated = await PriceQueryMessage.findById(message._id).populate(
+			populateMessage
+		);
 		await notifyPriceQueryPosted(populated, req.user);
 		return res.status(201).json({
 			success: true,

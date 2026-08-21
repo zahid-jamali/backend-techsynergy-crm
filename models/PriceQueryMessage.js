@@ -31,6 +31,15 @@ const PriceQueryMessageSchema = new mongoose.Schema(
 			ref: 'User',
 			index: true,
 		},
+		account: {
+			type: mongoose.Schema.Types.ObjectId,
+			ref: 'Account',
+			index: true,
+		},
+		replyTo: {
+			type: mongoose.Schema.Types.ObjectId,
+			ref: 'PriceQueryMessage',
+		},
 		senderRole: {
 			type: String,
 			enum: ['admin', 'staff', 'operations'],
