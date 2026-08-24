@@ -92,16 +92,6 @@ const updateDeal = async (req, res) => {
 					msg: 'Contact not found or archived',
 				});
 			}
-			const accountId = deal.account;
-			if (
-				contactDoc.account &&
-				String(contactDoc.account) !== String(accountId)
-			) {
-				return res.status(400).json({
-					success: false,
-					msg: 'Contact does not belong to the selected account',
-				});
-			}
 		}
 
 		/* ✅ Normalize */
@@ -227,15 +217,6 @@ const createDeal = async (req, res) => {
 				return res.status(404).json({
 					success: false,
 					msg: 'Contact not found or archived',
-				});
-			}
-			if (
-				contactDoc.account &&
-				String(contactDoc.account) !== String(account)
-			) {
-				return res.status(400).json({
-					success: false,
-					msg: 'Contact does not belong to the selected account',
 				});
 			}
 		}

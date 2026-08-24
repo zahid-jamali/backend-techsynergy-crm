@@ -6,6 +6,7 @@ const {
 	parseListQuery,
 	archiveMatch,
 	regex,
+	escapeRegex,
 	sendPage,
 	paginate,
 } = require('../lib/listQuery');
@@ -301,22 +302,54 @@ const getAllContacts = async (req, res) => {
 const lookupContacts = async (req, res) => {
 	try {
 		const search = String(req.query.search || '').trim();
-		const limit = Math.min(40, parseInt(req.query.limit, 10) || 20);
-		const filter = { isActive: true, isArchived: { $ne: true } };
-		if (req.query.account) filter.account = req.query.account;
+		const limit = Math.min(50, parseInt(req.query.limit, 10) || 30);
+		const global =
+			String(req.query.global || '') === 'true' ||
+			String(req.query.global || '') === '1';
+		const filter = { isActive: { $ne: false }, isArchived: { $ne: true } };
+		if (
+			!global &&
+			req.query.account &&
+			mongoose.Types.ObjectId.isValid(req.query.account)
+		) {
+			filter.account = req.query.account;
+		}
 		if (search) {
+			const rx = regex(search);
 			filter.$or = [
-				{ firstName: regex(search) },
-				{ lastName: regex(search) },
-				{ email: regex(search) },
-				{ phone: regex(search) },
+				{ firstName: rx },
+				{ lastName: rx },
+				{ email: rx },
+				{ phone: rx },
+				{ mobile: rx },
+				{ designation: rx },
+				{
+					$expr: {
+						$regexMatch: {
+							input: {
+								$trim: {
+									input: {
+										$concat: [
+											{ $ifNull: ['$firstName', ''] },
+											' ',
+											{ $ifNull: ['$lastName', ''] },
+										],
+									},
+								},
+							},
+							regex: escapeRegex(search),
+							options: 'i',
+						},
+					},
+				},
 			];
 		}
 		const data = await Contact.find(filter)
 			.populate('account', 'accountName')
 			.populate('contactOwner', 'name')
 			.sort({ firstName: 1, lastName: 1 })
-			.limit(limit);
+			.limit(limit)
+			.lean();
 		return res.json({ success: true, data });
 	} catch (err) {
 		console.error(err);
