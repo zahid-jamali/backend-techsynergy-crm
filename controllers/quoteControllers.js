@@ -24,8 +24,8 @@ const generateQuotePdf = async (req, res) => {
 	try {
 		const quote = await Quote.findById(req.params.id)
 			.populate('account')
-			.populate('contact', 'firstName lastName email phone')
-			.populate('quoteOwner');
+			.populate('contact', 'firstName lastName email phone mobile')
+			.populate('quoteOwner', 'name email designation');
 
 		if (!quote) {
 			return res.status(404).send('Quote not found');
@@ -35,8 +35,8 @@ const generateQuotePdf = async (req, res) => {
 		return sendPdf(
 			res,
 			'QuoteDocument',
-			{ quote },
-			`Q-${quote.subject}-${accountName}.pdf`
+			{ quote: quote.toObject({ virtuals: true }) },
+			`Q-${quote.quoteNumber || quote.subject}-${accountName}.pdf`
 		);
 	} catch (error) {
 		console.error('PDF Error:', error);
