@@ -17,6 +17,7 @@ const {
 const { setArchived } = require('../lib/archiveRecord');
 const { notifyQuoteConfirmed } = require('../lib/notifications');
 const { mapQuoteProduct, quoteTotals } = require('../lib/quotePricing');
+const { buildQuoteDownloadName } = require('../lib/quoteFileName');
 const ExcelJS = require('exceljs');
 const { resolveRole } = require('../lib/middleware');
 
@@ -31,12 +32,12 @@ const generateQuotePdf = async (req, res) => {
 			return res.status(404).send('Quote not found');
 		}
 
-		const accountName = quote.account?.accountName || 'quote';
+		const quoteObj = quote.toObject({ virtuals: true });
 		return sendPdf(
 			res,
 			'QuoteDocument',
-			{ quote: quote.toObject({ virtuals: true }) },
-			`Q-${quote.quoteNumber || quote.subject}-${accountName}.pdf`
+			{ quote: quoteObj },
+			buildQuoteDownloadName(quoteObj, 'pdf')
 		);
 	} catch (error) {
 		console.error('PDF Error:', error);
@@ -711,7 +712,7 @@ const generateCostingSheet = async (req, res) => {
 			color: { argb: 'FF6B7280' },
 		};
 
-		const fileName = `Costing-${quote.quoteNumber || quote._id}.xlsx`;
+		const fileName = buildQuoteDownloadName(quote, 'xlsx', 'Costing');
 		res.setHeader(
 			'Content-Type',
 			'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -751,9 +752,59 @@ const archiveQuote = async (req, res) => {
 	}
 };
 
+const getQuoteById = async (req, res) => {
+	try {
+		const { id } = req.params;
+
+		if (!mongoose.Types.ObjectId.isValid(id)) {
+			return res.status(400).json({
+				success: false,
+				msg: 'Invalid quote ID',
+			});
+		}
+
+		const quote = await Quote.findOne({
+			_id: id,
+			isActive: true,
+		})
+			.populate('deal', 'dealName')
+			.populate('account', 'accountName')
+			.populate('contact', 'firstName lastName email phone')
+			.populate('quoteOwner', 'name email');
+
+		if (!quote) {
+			return res.status(404).json({
+				success: false,
+				msg: 'Quote not found',
+			});
+		}
+
+		const role = resolveRole(req.user);
+		const ownerId = quote.quoteOwner?._id || quote.quoteOwner;
+		if (role !== 'admin' && String(ownerId) !== String(req.user.id)) {
+			return res.status(403).json({
+				success: false,
+				msg: 'You do not have permission to view this quote',
+			});
+		}
+
+		return res.json({
+			success: true,
+			data: quote,
+		});
+	} catch (error) {
+		console.error('Get Quote Error:', error);
+		return res.status(500).json({
+			success: false,
+			msg: 'Failed to fetch quote',
+		});
+	}
+};
+
 module.exports = {
 	createQuote,
 	getMyQuotes,
+	getQuoteById,
 	updateQuote,
 	updateQuoteStage,
 	generateQuotePdf,

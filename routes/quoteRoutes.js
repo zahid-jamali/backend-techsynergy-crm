@@ -7,6 +7,8 @@ const router = express.Router();
 
 router.post('/create', verifyJWT, quoteControllers.createQuote);
 router.get('/my', verifyJWT, quoteControllers.getMyQuotes);
+router.get('/all', verifyJWT, requireAdmin, quoteControllers.getAllQuotes);
+router.get('/:id', verifyJWT, quoteControllers.getQuoteById);
 router.get('/:id/costing-sheet', verifyJWT, quoteControllers.generateCostingSheet);
 router.get('/:id/pdf', quoteControllers.generateQuotePdf);
 router.put('/update/:id', verifyJWT, quoteControllers.updateQuote);
@@ -17,8 +19,5 @@ router.put(
 	uploadPO.single('purchaseOrder'),
 	quoteControllers.updateQuoteStage
 );
-
-// Admin Routes
-router.get('/all', verifyJWT, requireAdmin, quoteControllers.getAllQuotes);
 
 module.exports = router;

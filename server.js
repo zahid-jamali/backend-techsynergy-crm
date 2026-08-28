@@ -53,8 +53,8 @@ app.get("/health", (req, res) => {
   });
 });
 
-// const port = process.env.PORT || 2222;
-// console.log(`Server is running on ${port}`);
-// app.listen(port);
+const port = process.env.PORT || 2222;
+console.log(`Server is running on ${port}`);
+app.listen(port);
 
-module.exports = app;
+// module.exports = app;
