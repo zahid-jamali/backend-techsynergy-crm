@@ -136,6 +136,10 @@ const OrderSchema = new Schema(
 			type: Schema.Types.ObjectId,
 			ref: 'User',
 		},
+		ownershipMessage: {
+			type: String,
+			trim: true,
+		},
 		isActive: {
 			type: Boolean,
 			default: true,

@@ -4,6 +4,7 @@ const getNextSequence = require('../lib/getNextSequence.js');
 const Product = require('../models/Products');
 const convertCurrency = require('../lib/convertCurrency');
 const Deals = require('../models/Deals');
+const Account = require('../models/Account');
 const Contact = require('../models/Contacts');
 const User = require('../models/Users');
 const { sendPdf } = require('../lib/pdf/renderPdf');
@@ -200,6 +201,53 @@ const createQuote = async (req, res) => {
 	}
 };
 
+const buildQuoteSearchFilter = async (search) => {
+	if (!search) return null;
+	const term = regex(search);
+	const trimmed = String(search).trim();
+	const words = trimmed.split(/\s+/).filter(Boolean);
+
+	const contactOr = [
+		{ firstName: term },
+		{ lastName: term },
+		{ email: term },
+	];
+	if (words.length > 1) {
+		contactOr.push({
+			$and: [
+				{ firstName: regex(words[0]) },
+				{ lastName: regex(words.slice(1).join(' ')) },
+			],
+		});
+	}
+
+	const [matchingAccounts, matchingContacts] = await Promise.all([
+		Account.find({
+			$or: [{ accountName: term }, { industry: term }],
+		}).select('_id'),
+		Contact.find({
+			$or: contactOr,
+		}).select('_id'),
+	]);
+
+	const accountIds = matchingAccounts.map((a) => a._id);
+	const contactIds = matchingContacts.map((c) => c._id);
+
+	const orConditions = [
+		{ subject: term },
+		{ quoteNumber: term },
+	];
+
+	if (accountIds.length > 0) {
+		orConditions.push({ account: { $in: accountIds } });
+	}
+	if (contactIds.length > 0) {
+		orConditions.push({ contact: { $in: contactIds } });
+	}
+
+	return orConditions;
+};
+
 const getMyQuotes = async (req, res) => {
 	try {
 		const { page, limit, search, archived } = parseListQuery(req);
@@ -219,7 +267,8 @@ const getMyQuotes = async (req, res) => {
 		if (req.query.isSOApproved === 'true') filter.isSOApproved = true;
 		if (req.query.isSOApproved === 'false') filter.isSOApproved = false;
 		if (search) {
-			filter.$or = [{ subject: regex(search) }, { quoteNumber: regex(search) }];
+			const searchOr = await buildQuoteSearchFilter(search);
+			if (searchOr) filter.$or = searchOr;
 		}
 
 		const result = await paginate(Quote, {
@@ -228,8 +277,8 @@ const getMyQuotes = async (req, res) => {
 			limit,
 			populate: [
 				{ path: 'deal', select: 'dealName' },
-				{ path: 'account', select: 'accountName' },
-				{ path: 'contact', select: 'firstName lastName' },
+				{ path: 'account', select: 'accountName industry' },
+				{ path: 'contact', select: 'firstName lastName email' },
 				{ path: 'quoteOwner', select: 'name email' },
 			],
 		});
@@ -440,7 +489,8 @@ const getAllQuotes = async (req, res) => {
 		if (req.query.isSOApproved === 'true') filter.isSOApproved = true;
 		if (req.query.isSOApproved === 'false') filter.isSOApproved = false;
 		if (search) {
-			filter.$or = [{ subject: regex(search) }, { quoteNumber: regex(search) }];
+			const searchOr = await buildQuoteSearchFilter(search);
+			if (searchOr) filter.$or = searchOr;
 		}
 		const result = await paginate(Quote, {
 			filter,
@@ -448,8 +498,8 @@ const getAllQuotes = async (req, res) => {
 			limit,
 			populate: [
 				{ path: 'deal', select: 'dealName' },
-				{ path: 'account', select: 'accountName' },
-				{ path: 'contact', select: 'firstName lastName' },
+				{ path: 'account', select: 'accountName industry' },
+				{ path: 'contact', select: 'firstName lastName email' },
 				{ path: 'quoteOwner', select: 'name email' },
 			],
 		});

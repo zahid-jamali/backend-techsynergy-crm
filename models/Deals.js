@@ -105,6 +105,35 @@ const DealSchema = new Schema(
 			default: {},
 		},
 
+		ownershipMessage: {
+			type: String,
+			trim: true,
+		},
+
+		ownershipHistory: [
+			{
+				fromUser: {
+					type: Schema.Types.ObjectId,
+					ref: 'User',
+				},
+				fromUserName: String,
+				toUser: {
+					type: Schema.Types.ObjectId,
+					ref: 'User',
+				},
+				toUserName: String,
+				transferredBy: {
+					type: Schema.Types.ObjectId,
+					ref: 'User',
+				},
+				transferredAt: {
+					type: Date,
+					default: Date.now,
+				},
+				message: String,
+			},
+		],
+
 		/* 🔹 Soft Status */
 		isActive: {
 			type: Boolean,

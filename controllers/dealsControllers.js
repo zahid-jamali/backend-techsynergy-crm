@@ -3,6 +3,8 @@ const Deals = require('../models/Deals.js');
 const User = require('../models/Users');
 const Account = require('../models/Account');
 const Contact = require('../models/Contacts');
+const Quote = require('../models/Quotes');
+const Order = require('../models/Order');
 const {
 	parseListQuery,
 	regex,
@@ -38,11 +40,13 @@ const updateDeal = async (req, res) => {
 			description,
 			contact,
 			account,
+			dealOwner,
 		} = req.body;
 
 		let usr = await User.findById(req.user.id);
 		let deal;
-		if (usr.isSuperUser) {
+		const isAdmin = Boolean(usr && (usr.isSuperUser || usr.role === 'admin'));
+		if (isAdmin) {
 			deal = await Deals.findById(id);
 		} else {
 			deal = await Deals.findOne({ _id: id, dealOwner: req.user.id });
@@ -92,21 +96,100 @@ const updateDeal = async (req, res) => {
 					msg: 'Contact not found or archived',
 				});
 			}
+			deal.contact = contact;
+		}
+
+		/* 🔹 Deal Owner Transfer & Cascade (Admin Privilege) */
+		if (isAdmin && dealOwner && String(dealOwner) !== String(deal.dealOwner)) {
+			if (!mongoose.Types.ObjectId.isValid(dealOwner)) {
+				return res.status(400).json({
+					success: false,
+					msg: 'Invalid deal owner ID',
+				});
+			}
+			const newOwner = await User.findById(dealOwner);
+			if (!newOwner) {
+				return res.status(404).json({
+					success: false,
+					msg: 'New deal owner not found',
+				});
+			}
+
+			const oldOwner = await User.findById(deal.dealOwner);
+			const oldOwnerName = oldOwner?.name || oldOwner?.email || 'Staff';
+			const newOwnerName = newOwner?.name || newOwner?.email || 'Staff';
+			const transferDate = new Date().toLocaleDateString('en-GB', {
+				day: 'numeric',
+				month: 'short',
+				year: 'numeric',
+			});
+
+			const dealMessage = `This deal (and affiliated quotations/orders) was created by ${oldOwnerName} and was given to ${newOwnerName} on ${transferDate}.`;
+			const quoteMessage = `This quotation was created by ${oldOwnerName} and was given to ${newOwnerName} on ${transferDate}.`;
+			const orderMessage = `This sales order was created under ${oldOwnerName} and was given to ${newOwnerName} on ${transferDate}.`;
+
+			deal.dealOwner = newOwner._id;
+			deal.ownershipMessage = dealMessage;
+			if (!Array.isArray(deal.ownershipHistory)) deal.ownershipHistory = [];
+			deal.ownershipHistory.push({
+				fromUser: oldOwner?._id,
+				fromUserName: oldOwnerName,
+				toUser: newOwner._id,
+				toUserName: newOwnerName,
+				transferredBy: req.user.id,
+				transferredAt: new Date(),
+				message: dealMessage,
+			});
+
+			/* 🔄 Cascade update affiliated Quotes */
+			const affiliatedQuotes = await Quote.find({ deal: deal._id }).select('_id');
+			const quoteIds = affiliatedQuotes.map((q) => q._id);
+
+			if (quoteIds.length > 0) {
+				await Quote.updateMany(
+					{ _id: { $in: quoteIds } },
+					{
+						$set: {
+							quoteOwner: newOwner._id,
+							ownershipMessage: quoteMessage,
+						},
+					}
+				);
+
+				/* 🔄 Cascade update affiliated Sales Orders */
+				await Order.updateMany(
+					{ finalQuote: { $in: quoteIds } },
+					{
+						$set: {
+							createdBy: newOwner._id,
+							ownershipMessage: orderMessage,
+						},
+					}
+				);
+			}
 		}
 
 		/* ✅ Normalize */
 		deal.dealName = dealName ?? deal.dealName;
 		deal.dealType = dealType ?? deal.dealType;
-		deal.stage = stage ?? deal.stage;
+		if (stage) {
+			deal.stage = stage;
+			deal.probability = stageProbabilityMap[stage] ?? deal.probability;
+		}
 		deal.nextStep = nextStep ?? deal.nextStep;
 		deal.previousStep = previousStep ?? deal.previousStep;
 		deal.amount = amount !== undefined ? Number(amount) : deal.amount;
 		deal.currency = currency !== undefined ? currency : deal.currency;
 		deal.closingDate = closingDate || deal.closingDate;
 		deal.description = description ?? deal.description;
-		deal.contact = contact || deal.contact;
-		deal.probability = stageProbabilityMap[stage];
+
 		await deal.save(); // expectedRevenue recalculated automatically
+
+		await deal.populate([
+			{ path: 'account', select: 'accountName' },
+			{ path: 'contact', select: 'firstName lastName email' },
+			{ path: 'dealOwner', select: 'name email' },
+		]);
 
 		return res.json({
 			success: true,

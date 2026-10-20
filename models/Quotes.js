@@ -35,7 +35,7 @@ const QuoteProductSchema = new Schema(
 		withHolding: {
 			type: Number,
 			min: 0,
-			default: 5.5,
+			default: 6,
 		},
 		priceAfterMargin: {
 			type: Number,
@@ -226,6 +226,10 @@ const QuoteSchema = new Schema(
 			type: Boolean,
 			default: false,
 			index: true,
+		},
+		ownershipMessage: {
+			type: String,
+			trim: true,
 		},
 		archivedAt: Date,
 		archivedBy: {
