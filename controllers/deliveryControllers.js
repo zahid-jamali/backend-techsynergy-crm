@@ -3,6 +3,91 @@ const Order = require('../models/Order');
 const getNextSequence = require('../lib/getNextSequence');
 const fileFromMulter = require('../lib/uploadedFile');
 const { notifyDeliveryCompleted } = require('../lib/notifications');
+const { sendPdf } = require('../lib/pdf/renderPdf');
+
+const TEXT_FIELDS = [
+	'carrier',
+	'trackingNumber',
+	'remarks',
+	'vehicleNumber',
+	'driverName',
+	'driverPhone',
+	'receivedBy',
+	'receiverPhone',
+];
+
+const parseJson = (value, fallback) => {
+	if (value === undefined || value === null || value === '') return fallback;
+	if (typeof value === 'object') return value;
+	try {
+		return JSON.parse(value);
+	} catch {
+		return fallback;
+	}
+};
+
+/** Apply the editable challan fields from a (multipart) request body. */
+const applyDetails = (delivery, body = {}) => {
+	TEXT_FIELDS.forEach((k) => {
+		if (body[k] !== undefined) delivery[k] = String(body[k]).trim();
+	});
+	if (body.packages !== undefined && body.packages !== '') {
+		delivery.packages = Math.max(0, Number(body.packages) || 0);
+	}
+	if (body.dispatchDate) {
+		const d = new Date(body.dispatchDate);
+		if (!Number.isNaN(d.getTime())) delivery.dispatchDate = d;
+	}
+	const shipTo = parseJson(body.shipTo, null);
+	if (shipTo && typeof shipTo === 'object') {
+		delivery.shipTo = {
+			name: String(shipTo.name || '').trim(),
+			address: String(shipTo.address || '').trim(),
+			contactName: String(shipTo.contactName || '').trim(),
+			phone: String(shipTo.phone || '').trim(),
+		};
+	}
+	const items = parseJson(body.items, null);
+	if (Array.isArray(items)) {
+		delivery.items = items
+			.filter((i) => i && String(i.productName || '').trim())
+			.map((i) => ({
+				productName: String(i.productName).trim(),
+				description: String(i.description || '').trim(),
+				uoM: String(i.uoM || 'Units').trim(),
+				orderedQty: Math.max(0, Number(i.orderedQty) || 0),
+				deliveredQty: Math.max(0, Number(i.deliveredQty) || 0),
+				remarks: String(i.remarks || '').trim(),
+			}));
+	}
+};
+
+const addressText = (a = {}) =>
+	[a.street, a.city, a.state, a.postalCode, a.country].filter(Boolean).join(', ');
+
+/** Default ship-to and item list taken from the sell order. */
+const defaultsFromOrder = (order) => {
+	const quote = order.finalQuote || {};
+	const account = quote.account || {};
+	const contact = quote.contact || {};
+	const ship = account.shippingAddress || {};
+	const addr = ship.street || ship.city ? ship : account.billingAddress;
+	return {
+		shipTo: {
+			name: account.accountName || '',
+			address: addressText(addr || {}),
+			contactName: `${contact.firstName || ''} ${contact.lastName || ''}`.trim(),
+			phone: contact.phone || account.phone || '',
+		},
+		items: (order.products || []).map((p) => ({
+			productName: p.productName,
+			description: p.description || '',
+			uoM: 'Units',
+			orderedQty: Number(p.quantity) || 0,
+			deliveredQty: Number(p.quantity) || 0,
+		})),
+	};
+};
 
 const populateDelivery = (query) =>
 	query
@@ -43,13 +128,16 @@ const syncApprovedOrders = async () => {
 
 const createDelivery = async (req, res) => {
 	try {
-		const { orderId, carrier, trackingNumber, remarks, status } = req.body;
+		const { orderId, status } = req.body;
 
 		if (!orderId) {
 			return res.status(400).json({ msg: 'Sell order is required' });
 		}
 
-		const order = await Order.findById(orderId);
+		const order = await Order.findById(orderId).populate({
+			path: 'finalQuote',
+			populate: [{ path: 'account' }, { path: 'contact' }],
+		});
 		if (!order || !order.isActive) {
 			return res.status(404).json({ msg: 'Sell order not found' });
 		}
@@ -76,25 +164,24 @@ const createDelivery = async (req, res) => {
 		const files = req.files || {};
 		const supporting = (files.supportingDocuments || []).map(fileFromMulter);
 
-		const delivery = await Delivery.create({
+		const safeStatus = ['draft', 'in_transit'].includes(status) ? status : 'draft';
+		const delivery = new Delivery({
 			deliveryNumber,
 			order: orderId,
-			carrier,
-			trackingNumber,
-			remarks,
-			status: status || 'draft',
+			status: safeStatus,
+			dispatchDate: new Date(),
+			...defaultsFromOrder(order),
 			deliveryNote: fileFromMulter(files.deliveryNote?.[0]),
 			supportingDocuments: supporting,
 			createdBy: req.user.id,
-			deliveredAt: status === 'delivered' ? new Date() : undefined,
 		});
+		applyDetails(delivery, req.body);
+		await delivery.save();
 
 		if (
 			['ready_for_operations', 'po_created'].includes(order.fulfillmentStatus)
 		) {
-			order.fulfillmentStatus =
-				status === 'delivered' ? 'delivered' : 'in_delivery';
-			await order.save();
+			await Order.updateOne({ _id: order._id }, { fulfillmentStatus: 'in_delivery' });
 		}
 
 		const populated = await populateDelivery(Delivery.findById(delivery._id));
@@ -162,10 +249,8 @@ const updateDelivery = async (req, res) => {
 			});
 		}
 
-		const { carrier, trackingNumber, remarks, status } = req.body;
-		if (carrier !== undefined) delivery.carrier = carrier;
-		if (trackingNumber !== undefined) delivery.trackingNumber = trackingNumber;
-		if (remarks !== undefined) delivery.remarks = remarks;
+		const { status } = req.body;
+		applyDetails(delivery, req.body);
 
 		const files = req.files || {};
 		if (files.deliveryNote?.[0]) {
@@ -178,11 +263,9 @@ const updateDelivery = async (req, res) => {
 			];
 		}
 
-		if (status && ['draft', 'in_transit', 'delivered'].includes(status)) {
+		// "delivered" requires the signed copy, so it goes through markDelivered.
+		if (status && ['draft', 'in_transit'].includes(status) && delivery.status !== 'delivered') {
 			delivery.status = status;
-			if (status === 'delivered' && !delivery.deliveredAt) {
-				delivery.deliveredAt = new Date();
-			}
 		}
 
 		await delivery.save();
@@ -220,15 +303,21 @@ const markDelivered = async (req, res) => {
 			];
 		}
 
+		if (delivery.status === 'forwarded_to_finance') {
+			return res.status(400).json({ msg: 'This delivery has already been forwarded to finance' });
+		}
+		applyDetails(delivery, req.body);
 		if (!delivery.deliveryNote?.url) {
 			return res.status(400).json({
-				msg: 'Upload a delivery note copy before marking as delivered',
+				msg: 'Upload the signed delivery challan copy before marking as delivered',
 			});
+		}
+		if (!delivery.receivedBy) {
+			return res.status(400).json({ msg: 'Enter who received the goods before marking as delivered' });
 		}
 
 		delivery.status = 'delivered';
 		delivery.deliveredAt = new Date();
-		if (req.body.remarks !== undefined) delivery.remarks = req.body.remarks;
 		await delivery.save();
 
 		await Order.findByIdAndUpdate(delivery.order, {
@@ -347,7 +436,42 @@ const getOperationsDashboard = async (req, res) => {
 	}
 };
 
+const downloadDeliveryChallan = async (req, res) => {
+	try {
+		const delivery = await Delivery.findById(req.params.id)
+			.populate({
+				path: 'order',
+				populate: {
+					path: 'finalQuote',
+					select: 'subject account contact',
+					populate: [
+						{ path: 'account', select: 'accountName billingAddress shippingAddress phone' },
+						{ path: 'contact', select: 'firstName lastName phone email' },
+					],
+				},
+			})
+			.populate('createdBy', 'name')
+			.lean();
+		if (!delivery || !delivery.isActive) {
+			return res.status(404).json({ msg: 'Delivery not found' });
+		}
+		const d = defaultsFromOrder(delivery.order || {});
+		if (!delivery.items?.length) delivery.items = d.items;
+		if (!delivery.shipTo?.name) delivery.shipTo = d.shipTo;
+		return sendPdf(
+			res,
+			'DeliveryChallanDocument',
+			{ delivery },
+			`${delivery.deliveryNumber || 'Delivery-Challan'}.pdf`
+		);
+	} catch (error) {
+		console.error('Delivery Challan PDF Error:', error);
+		if (!res.headersSent) return res.status(500).json({ msg: 'Failed to generate delivery challan' });
+	}
+};
+
 module.exports = {
+	downloadDeliveryChallan,
 	createDelivery,
 	getDeliveries,
 	getDeliveryById,

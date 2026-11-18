@@ -80,20 +80,28 @@ const generateDeliveryNotePdf = async (req, res) => {
 			populate: [{ path: 'account' }, { path: 'contact' }],
 		});
 
-		if (!order) {
-			return res.status(404).json({ message: 'Order not found' });
+		if (!order || !order.isActive) {
+			return res.status(404).json({ success: false, message: 'Order not found' });
+		}
+
+		if (!order.isSOApproved) {
+			return res.status(400).json({
+				success: false,
+				message: 'Delivery note can only be generated after order approval',
+			});
 		}
 
 		return sendPdf(
 			res,
 			'DeliveryNoteDocument',
 			{ order },
-			`Delivery-Note-${order.orderNumber}.pdf`
+			`Delivery-Note-${order.orderNumber || order._id}.pdf`
 		);
 	} catch (error) {
-		console.error(error);
+		console.error('Delivery Note PDF Error:', error);
 
-		res.status(500).json({
+		return res.status(500).json({
+			success: false,
 			message: 'Failed to generate delivery note',
 		});
 	}

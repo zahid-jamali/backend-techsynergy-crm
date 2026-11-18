@@ -7,7 +7,7 @@ const {
 const { verifyJWT, requireFinance, requireRoles } = require('../lib/middleware.js');
 const router = express.Router();
 
-const invoiceDownloadRoles = requireRoles('admin', 'operations', 'finance');
+const invoiceDownloadRoles = requireRoles('admin', 'finance');
 const deliveryNoteDownloadRoles = requireRoles('admin', 'operations');
 
 router.get('/:id/pdf', verifyJWT, invoiceDownloadRoles, generateInvoicePdf);

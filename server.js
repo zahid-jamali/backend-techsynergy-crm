@@ -21,6 +21,9 @@ const workspaceRoutes = require("./routes/workspaceRoutes");
 const priceQueryRoutes = require("./routes/priceQueryRoutes");
 
 const app = express();
+// Behind Vercel / a reverse proxy: use the client IP for rate limiting.
+app.set("trust proxy", 1);
+app.disable("x-powered-by");
 app.use(cors({ origin: "*" }));
 app.use(express.json({ limit: "2mb" }));
 dotenv.config();
@@ -53,8 +56,8 @@ app.get("/health", (req, res) => {
   });
 });
 
-const port = process.env.PORT || 2222;
-console.log(`Server is running on ${port}`);
-app.listen(port);
+// const port = process.env.PORT || 2222;
+// console.log(`Server is running on ${port}`);
+// app.listen(port);
 
-// module.exports = app;
+module.exports = app;

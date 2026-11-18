@@ -47,6 +47,38 @@ const DeliverySchema = new Schema(
 			trim: true,
 		},
 
+		dispatchDate: Date,
+		vehicleNumber: { type: String, trim: true },
+		driverName: { type: String, trim: true },
+		driverPhone: { type: String, trim: true },
+		packages: { type: Number, min: 0 },
+		receivedBy: { type: String, trim: true },
+		receiverPhone: { type: String, trim: true },
+
+		shipTo: {
+			name: { type: String, trim: true },
+			address: { type: String, trim: true },
+			contactName: { type: String, trim: true },
+			phone: { type: String, trim: true },
+		},
+
+		items: {
+			type: [
+				new Schema(
+					{
+						productName: { type: String, trim: true, required: true },
+						description: { type: String, trim: true },
+						uoM: { type: String, trim: true, default: 'Units' },
+						orderedQty: { type: Number, min: 0, default: 0 },
+						deliveredQty: { type: Number, min: 0, default: 0 },
+						remarks: { type: String, trim: true },
+					},
+					{ _id: false }
+				),
+			],
+			default: [],
+		},
+
 		deliveryNote: FileSchema,
 
 		supportingDocuments: {

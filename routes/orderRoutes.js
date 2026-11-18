@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const controller = require('../controllers/orderControllers.js');
-const { verifyJWT, requireAdmin } = require('../lib/middleware.js');
+const { verifyJWT, requireFinance } = require('../lib/middleware.js');
 const uploadPO = require('../lib/poUpload.js');
 
 router.post(
@@ -19,7 +19,7 @@ router.delete('/:orderId/delete', verifyJWT, controller.deleteOrder);
 router.patch(
 	'/:orderId/approval',
 	verifyJWT,
-	requireAdmin,
+	requireFinance,
 	controller.soApproval
 );
 

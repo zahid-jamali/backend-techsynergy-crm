@@ -39,6 +39,22 @@ const schema = mongoose.Schema(
     priceQueryLastReadAt: {
       type: Date,
     },
+    failedLoginAttempts: {
+      type: Number,
+      default: 0,
+    },
+    lockUntil: {
+      type: Date,
+    },
+    lastLoginAt: {
+      type: Date,
+    },
+    lastLoginIp: {
+      type: String,
+    },
+    passwordChangedAt: {
+      type: Date,
+    },
     password: {
       type: String,
       required: true,
